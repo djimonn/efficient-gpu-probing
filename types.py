@@ -1,0 +1,1 @@
+VarIndex = int
