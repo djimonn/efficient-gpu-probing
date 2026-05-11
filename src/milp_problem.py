@@ -34,8 +34,11 @@ class MILPProblem:
         self.ub = ub
         self.is_integer = is_integer
 
-    # see paper
+    # i is the index of the constraint to operate on.
     def L_min(self, i: int, except_k: Optional[VarIndex] = None) -> float:
+        """
+        Computes the minimum value of the left-hand side of constraint i, given the current variable bounds.
+        """
         assert 0 <= i < self.A.shape[0], "Constraint index out of bounds"
         if except_k:
             assert 0 <= except_k < self.A.shape[1], "Variable index out of bounds"
@@ -43,13 +46,19 @@ class MILPProblem:
         for j in range(self.A.shape[1]):
             if j == except_k:
                 continue
-            if self.A[i, j] > 0:
+            if self.A[i, j] == 0:
+                continue
+            elif self.A[i, j] > 0:
                 res += self.A[i, j] * self.lb[j]
             else:
                 res += self.A[i, j] * self.ub[j]
         return res
 
+    # i is the index of the constraint to operate on.
     def L_max(self, i: int, except_k: Optional[VarIndex] = None) -> float:
+        """
+        Computes the maximum value of the left-hand side of constraint i, given the current variable bounds.
+        """
         assert 0 <= i < self.A.shape[0], "Constraint index out of bounds"
         if except_k:
             assert 0 <= except_k < self.A.shape[1], "Variable index out of bounds"
@@ -57,7 +66,9 @@ class MILPProblem:
         for j in range(self.A.shape[1]):
             if j == except_k:
                 continue
-            if self.A[i, j] > 0:
+            if self.A[i, j] == 0:
+                continue
+            elif self.A[i, j] > 0:
                 res += self.A[i, j] * self.ub[j]
             else:
                 res += self.A[i, j] * self.lb[j]
