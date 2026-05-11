@@ -2,23 +2,29 @@ import math
 from typing import Tuple
 
 from bound_interval import BoundInterval
-from types import VarIndex
+from type_aliases import VarIndex
 
 from milp_problem import MILPProblem
+
+
+class CacheEntry:
+    def __init__(self, is_feasible: bool, bounds: dict[VarIndex, BoundInterval]):
+        self.is_feasible = is_feasible
+        self.bounds = bounds
 
 
 class ProbingCache:
     def __init__(self, problem: MILPProblem):
         self.problem = problem
-        self.cache: dict[
-            Tuple[VarIndex, BoundInterval], dict[VarIndex, BoundInterval]
-        ] = {}
+        self.cache: dict[Tuple[VarIndex, BoundInterval], CacheEntry] = {}
 
     def probe(self, var_index: VarIndex) -> None:
         default_interval = BoundInterval(
             self.problem.lb[var_index], self.problem.ub[var_index]
         )
         for probe_interval in self._split_interval(default_interval):
+            # Basic probing techniques (see "Preprocessing and Probing Techniques for Mixed Integer Programming Problems" by M.W.P. Savelsbergh)
+            #
             pass
 
     def _split_interval(
