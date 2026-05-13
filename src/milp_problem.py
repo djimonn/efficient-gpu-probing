@@ -27,7 +27,7 @@ class MILPProblem:
     ):
         self.A = A
         assert (
-            self.num_constraints == b.shape[0]
+            self.num_constraints == b.size
         ), "Number of rows in A must match the length of b"
         self.name = name
         self.b = b
