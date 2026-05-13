@@ -1,6 +1,7 @@
+# pyright: reportPrivateUsage=false
 import numpy as np
 import pytest
-import scipy.sparse as sp
+import scipy.sparse as sp  # type: ignore
 
 from milp_problem import MILPProblem
 
@@ -23,7 +24,7 @@ def test_from_mps_file():
     assert problem.name == test_name
     assert problem.A.shape == (4, 3)
     exptected_A = sp.csr_matrix([[1, 1, 0], [-1, 0, -1], [0, -1, 1], [0, 1, -1]])
-    assert (problem.A != exptected_A).nnz == 0
+    assert (problem.A != exptected_A).nnz == 0  # type: ignore
     assert problem.b.shape == (4,)
     assert (problem.b == [5, -10, 7, -7]).all()
     assert problem.lb.shape == (3,)
@@ -57,33 +58,33 @@ def test_L_min():
 
     ### no except_k ###
     # L_min for constraint 0 should be 2*0 + 3*0 - 1*4 = -4
-    assert problem.L_min(0) == -4
+    assert problem._L_min(0) == -4
     # L_min for constraint 1 should be -1*1 + 2*0 + 1*1 = 0
-    assert problem.L_min(1) == 0
+    assert problem._L_min(1) == 0
     # L_min for constraint 2 should be 1*0 + 1*0 = 0
-    assert problem.L_min(2) == 0
+    assert problem._L_min(2) == 0
 
     ### with except_k ###
     # L_min for constraint 0 except k=0 should be 3*0 - 1*4 = -4
-    assert problem.L_min(0, except_k=0) == -4
+    assert problem._L_min(0, except_k=0) == -4
     # L_min for constraint 0 except k=1 should be 2*0 - 1*4 = -4
-    assert problem.L_min(0, except_k=1) == -4
+    assert problem._L_min(0, except_k=1) == -4
     # L_min for constraint 0 except k=2 should be 2*0 + 3*0 = 0
-    assert problem.L_min(0, except_k=2) == 0
+    assert problem._L_min(0, except_k=2) == 0
 
     # L_min for constraint 1 except k=0 should be 2*0 + 1*1 = 1
-    assert problem.L_min(1, except_k=0) == 1
+    assert problem._L_min(1, except_k=0) == 1
     # L_min for constraint 1 except k=1 should be -1*1 + 1*1 = 0
-    assert problem.L_min(1, except_k=1) == 0
+    assert problem._L_min(1, except_k=1) == 0
     # L_min for constraint 1 except k=2 should be -1*1 + 2*0 = -1
-    assert problem.L_min(1, except_k=2) == -1
+    assert problem._L_min(1, except_k=2) == -1
 
     # L_min for constraint 2 except k=0 should be 0*1 = 0
-    assert problem.L_min(2, except_k=0) == 0
+    assert problem._L_min(2, except_k=0) == 0
     # L_min for constraint 2 except k=1 should be 1*0 = 0
-    assert problem.L_min(2, except_k=1) == 0
+    assert problem._L_min(2, except_k=1) == 0
     # L_min for constraint 2 except k=2 should be 1*0 + 1*0 = 0
-    assert problem.L_min(2, except_k=2) == 0
+    assert problem._L_min(2, except_k=2) == 0
 
 
 def test_L_max():
@@ -111,33 +112,33 @@ def test_L_max():
 
     ### no except_k ###
     # L_max for constraint 0 should be 2*1 + 3*5 - 1*1 = 16
-    assert problem.L_max(0) == 16
+    assert problem._L_max(0) == 16
     # L_max for constraint 1 should be -1*0 + 2*5 + 1*4 = 14
-    assert problem.L_max(1) == 14
+    assert problem._L_max(1) == 14
     # L_max for constraint 2 should be 1*1 + 1*5 = 6
-    assert problem.L_max(2) == 6
+    assert problem._L_max(2) == 6
 
     ### with except_k ###
     # L_max for constraint 0 except k=0 should be 3*5 - 1*1 = 14
-    assert problem.L_max(0, except_k=0) == 14
+    assert problem._L_max(0, except_k=0) == 14
     # L_max for constraint 0 except k=1 should be 2*1 - 1*1 = 1
-    assert problem.L_max(0, except_k=1) == 1
+    assert problem._L_max(0, except_k=1) == 1
     # L_max for constraint 0 except k=2 should be 2*1 + 3*5 = 17
-    assert problem.L_max(0, except_k=2) == 17
+    assert problem._L_max(0, except_k=2) == 17
 
     # L_max for constraint 1 except k=0 should be 2*5 + 1*4 = 14
-    assert problem.L_max(1, except_k=0) == 14
+    assert problem._L_max(1, except_k=0) == 14
     # L_max for constraint 1 except k=1 should be -1*0 + 1*4 = 4
-    assert problem.L_max(1, except_k=1) == 4
+    assert problem._L_max(1, except_k=1) == 4
     # L_max for constraint 1 except k=2 should be -1*0 + 2*5 = 10
-    assert problem.L_max(1, except_k=2) == 10
+    assert problem._L_max(1, except_k=2) == 10
 
     # L_max for constraint 2 except k=0 should be 1*5 = 5
-    assert problem.L_max(2, except_k=0) == 5
+    assert problem._L_max(2, except_k=0) == 5
     # L_max for constraint 2 except k=1 should be 1*1 = 1
-    assert problem.L_max(2, except_k=1) == 1
+    assert problem._L_max(2, except_k=1) == 1
     # L_max for constraint 2 except k=2 should be 1*1 + 1*5 = 6
-    assert problem.L_max(2, except_k=2) == 6
+    assert problem._L_max(2, except_k=2) == 6
 
 
 def test_constraint_is_infeasible():

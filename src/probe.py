@@ -1,11 +1,10 @@
 from dataclasses import dataclass
-from types import VarIndex
 
 from bound_interval import BoundInterval
+from type_aliases import VarIndex
 
 
 @dataclass(frozen=True)
 class Probe:
-    def __init__(self, var_index: VarIndex, bound_interval: BoundInterval):
-        self.var_index = var_index
-        self.bound_interval = bound_interval
+    var_index: VarIndex
+    bound_interval: BoundInterval
