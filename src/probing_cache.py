@@ -64,8 +64,16 @@ class ProbingCache:
                         (self.probe_results[(var_index, probe_interval)]).update_bounds(
                             var_index=k,
                             new_bounds=BoundInterval(
-                                lower_bound=tight_lower_bound,
-                                upper_bound=tight_upper_bound,
+                                lower_bound=(
+                                    math.ceil(tight_lower_bound)
+                                    if self.problem.is_integer[k]
+                                    else tight_lower_bound
+                                ),
+                                upper_bound=(
+                                    math.floor(tight_upper_bound)
+                                    if self.problem.is_integer[k]
+                                    else tight_upper_bound
+                                ),
                             ),
                         )
 
