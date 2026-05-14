@@ -114,7 +114,7 @@ class MILPProblem:
     def get_tight_lower_bound(self, i: int, k: VarIndex) -> float:
         assert self.A[i, k] < 0, "Coefficient must be negative for this to work"
         a_ik = cast(float, self.A[i, k])
-        return max(self.lb[k], (self._L_min(i, except_k=k) - self.b[i]) / a_ik)
+        return max(self.lb[k], (self.b[i] - self._L_min(i, except_k=k)) / a_ik)
 
     @classmethod
     def from_mps_file(cls, name: str, path: str) -> "MILPProblem":
