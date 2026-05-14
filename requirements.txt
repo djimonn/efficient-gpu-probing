@@ -2,3 +2,4 @@ numpy
 scipy
 gurobipy
 pytest
+pypdf
