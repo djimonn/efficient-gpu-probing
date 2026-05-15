@@ -110,13 +110,13 @@ class MILPProblem:
     # i is the index of the constraint to check
     # k is the index of the variable to check
     def get_tight_upper_bound(self, i: int, k: VarIndex) -> float:
-        if self.A[i, k] < 0:
+        if self.A[i, k] <= 0:
             raise ValueError("Coefficient must be positive for this to work")
         a_ik = cast(float, self.A[i, k])
         return min(self.ub[k], (self.b[i] - self._L_min(i, except_k=k)) / a_ik)
 
     def get_tight_lower_bound(self, i: int, k: VarIndex) -> float:
-        if self.A[i, k] > 0:
+        if self.A[i, k] >= 0:
             raise ValueError("Coefficient must be negative for this to work")
         a_ik = cast(float, self.A[i, k])
         return max(self.lb[k], (self.b[i] - self._L_min(i, except_k=k)) / a_ik)

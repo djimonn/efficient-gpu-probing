@@ -72,11 +72,13 @@ class ProbingCache:
                                 lower_bound=(
                                     math.ceil(tight_lower_bound)
                                     if self.problem.is_integer[k]
+                                    and not math.isinf(tight_lower_bound)
                                     else tight_lower_bound
                                 ),
                                 upper_bound=(
                                     math.floor(tight_upper_bound)
                                     if self.problem.is_integer[k]
+                                    and not math.isinf(tight_upper_bound)
                                     else tight_upper_bound
                                 ),
                             )
