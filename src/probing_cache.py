@@ -22,82 +22,56 @@ class ProbingCache:
             extended_problem = self.problem.extend_with_constraint(
                 var_index, probe_interval
             )
-            changed = True
-            while (
-                changed
-            ):  # keep applying probing techniques until no more changes can be made
-                changed = False
-                for i in range(
-                    extended_problem.num_constraints
-                ):  # iterate through all constraints
-                    if extended_problem.constraint_is_infeasible(
-                        i
-                    ):  # if any constraint is infeasible, then the probe interval is infeasible
-                        self.probe_results[(var_index, probe_interval)] = CacheEntry(
-                            False
+            self.probe_results[(var_index, probe_interval)] = (
+                self._propagate_until_fixpoint(extended_problem)
+            )
+
+    def _propagate_until_fixpoint(self, problem: MILPProblem) -> CacheEntry:
+        cache_entry = CacheEntry(True)
+        extended_problem = problem
+
+        changed = True
+        while changed:
+            changed = False
+            for i in range(extended_problem.num_constraints):
+                if extended_problem.constraint_is_infeasible(i):
+                    return CacheEntry(False)
+                for k in range(extended_problem.num_variables):
+                    tight_upper_bound = extended_problem.ub[k]
+                    try:
+                        tight_upper_bound = extended_problem.get_tight_upper_bound(i, k)
+                    except ValueError:
+                        pass
+                    tight_lower_bound = extended_problem.lb[k]
+                    try:
+                        tight_lower_bound = extended_problem.get_tight_lower_bound(i, k)
+                    except ValueError:
+                        pass
+                    new_bounds = BoundInterval(
+                        lower_bound=(
+                            math.ceil(tight_lower_bound)
+                            if self.problem.is_integer[k]
+                            and not math.isinf(tight_lower_bound)
+                            else tight_lower_bound
+                        ),
+                        upper_bound=(
+                            math.floor(tight_upper_bound)
+                            if self.problem.is_integer[k]
+                            and not math.isinf(tight_upper_bound)
+                            else tight_upper_bound
+                        ),
+                    )
+                    update_bound_result = cache_entry.update_bounds(
+                        k,
+                        new_bounds,
+                        BoundInterval(extended_problem.lb[k], extended_problem.ub[k]),
+                    )
+                    if update_bound_result:
+                        extended_problem = extended_problem.extend_with_constraint(
+                            k, new_bounds
                         )
-                        break
-
-                    else:
-                        if (var_index, probe_interval) not in self.probe_results:
-                            self.probe_results[(var_index, probe_interval)] = (
-                                CacheEntry(True)
-                            )
-
-                        for k in range(
-                            extended_problem.num_variables
-                        ):  # iterate through all variables
-                            if k == var_index:
-                                continue
-                            tight_upper_bound = extended_problem.ub[k]
-                            try:
-                                tight_upper_bound = (
-                                    extended_problem.get_tight_upper_bound(i, k=k)
-                                )
-                            except (
-                                ValueError
-                            ):  # get_tight_lower_bound may raise an exception if the sign of the coefficient of variable k in constraint i is 'wrong'
-                                pass
-                            tight_lower_bound = extended_problem.lb[k]
-                            try:
-                                tight_lower_bound = (
-                                    extended_problem.get_tight_lower_bound(i, k=k)
-                                )
-                            except (
-                                ValueError
-                            ):  # get_tight_upper_bound may raise an exception if the sign of the coefficient of variable k in constraint i is 'wrong'
-                                pass
-
-                            k_new_bounds = BoundInterval(
-                                lower_bound=(
-                                    math.ceil(tight_lower_bound)
-                                    if self.problem.is_integer[k]
-                                    and not math.isinf(tight_lower_bound)
-                                    else tight_lower_bound
-                                ),
-                                upper_bound=(
-                                    math.floor(tight_upper_bound)
-                                    if self.problem.is_integer[k]
-                                    and not math.isinf(tight_upper_bound)
-                                    else tight_upper_bound
-                                ),
-                            )
-                            update_bound_result = self.probe_results[
-                                (var_index, probe_interval)
-                            ].update_bounds(
-                                var_index=k,
-                                new_bounds=k_new_bounds,
-                                initial_bounds=BoundInterval(
-                                    self.problem.lb[k], self.problem.ub[k]
-                                ),
-                            )
-                            if update_bound_result:
-                                extended_problem = (
-                                    extended_problem.extend_with_constraint(
-                                        var_index=k, bound=k_new_bounds
-                                    )
-                                )
-                            changed = changed or update_bound_result
+                    changed = changed or update_bound_result
+        return cache_entry
 
     def _split_interval(
         self, interval: BoundInterval

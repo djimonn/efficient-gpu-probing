@@ -27,7 +27,6 @@ class CacheEntry:
         Returns True if the bounds were changed (improved), False if they were not changed (improved).
         """
         if not self.is_feasible:
-            print("not feasible bra")
             return False
 
         changed = False
