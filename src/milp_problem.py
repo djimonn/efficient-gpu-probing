@@ -60,7 +60,7 @@ class MILPProblem:
         """
         if not (0 <= i < self.num_constraints):
             raise IndexError("Constraint index out of bounds")
-        if except_k:
+        if except_k is not None:
             if not (0 <= except_k < self.num_variables):
                 raise IndexError("Variable index k out of bounds")
         res = 0.0
@@ -83,7 +83,7 @@ class MILPProblem:
         """
         if not (0 <= i < self.num_constraints):
             raise IndexError("Constraint index out of bounds")
-        if except_k:
+        if except_k is not None:
             if not (0 <= except_k < self.num_variables):
                 raise IndexError("Variable index k out of bounds")
         res = 0.0
