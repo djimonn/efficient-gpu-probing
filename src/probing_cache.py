@@ -84,7 +84,7 @@ class ProbingCache:
         elif math.isfinite(interval.lower_bound) and math.isfinite(
             interval.upper_bound
         ):
-            mid = math.floor(interval.lower_bound + interval.upper_bound) / 2
+            mid = math.floor((interval.lower_bound + interval.upper_bound) / 2)
             return (
                 BoundInterval(interval.lower_bound, mid),
                 BoundInterval(mid + 1, interval.upper_bound),
