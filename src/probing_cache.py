@@ -49,7 +49,7 @@ class ProbingCache:
                         ):  # iterate through all variables
                             if k == var_index:
                                 continue
-                            tight_upper_bound = self.problem.ub[k]
+                            tight_upper_bound = extended_problem.ub[k]
                             try:
                                 tight_upper_bound = (
                                     extended_problem.get_tight_upper_bound(i, k=k)
@@ -58,7 +58,7 @@ class ProbingCache:
                                 ValueError
                             ):  # get_tight_lower_bound may raise an exception if the sign of the coefficient of variable k in constraint i is 'wrong'
                                 pass
-                            tight_lower_bound = self.problem.lb[k]
+                            tight_lower_bound = extended_problem.lb[k]
                             try:
                                 tight_lower_bound = (
                                     extended_problem.get_tight_lower_bound(i, k=k)
