@@ -65,14 +65,13 @@ def test_probe_trivial():
         (0, BoundInterval.from_single_value(0.0))
     ].is_feasible
     assert (0, BoundInterval.from_single_value(0.0)) in probing_cache.probe_results
-    print(
-        probing_cache.probe_results[
-            (0, BoundInterval.from_single_value(0.0))
-        ].to_string()
-    )
     assert (
-        probing_cache.probe_results[(0, BoundInterval.from_single_value(0.0))]
-    ).var_bounds[1] == BoundInterval(0.0, 1.0)
+        1
+        not in probing_cache.probe_results[
+            (0, BoundInterval.from_single_value(0.0))
+        ].var_bounds
+    )  # setting x_0 = 0 does not constrain x_1 further, so it should not be in the cache
+
     # x_0 = 1.0
     assert probing_cache.probe_results[
         (0, BoundInterval.from_single_value(1.0))
@@ -91,8 +90,11 @@ def test_probe_trivial():
     ].is_feasible
     assert (1, BoundInterval.from_single_value(0.0)) in probing_cache.probe_results
     assert (
-        probing_cache.probe_results[(1, BoundInterval.from_single_value(0.0))]
-    ).var_bounds[0] == BoundInterval(0.0, 1.0)
+        0
+        not in probing_cache.probe_results[
+            (1, BoundInterval.from_single_value(0.0))
+        ].var_bounds
+    )  # setting x_1 = 0 does not constraint x_0 further, so it should not be in the cache
     # x_1 = 1.0
     assert probing_cache.probe_results[
         (1, BoundInterval.from_single_value(1.0))

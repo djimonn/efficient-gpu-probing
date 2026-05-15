@@ -6,6 +6,7 @@ import numpy as np
 import gurobipy as gp
 from pathlib import Path
 from bound_interval import BoundInterval
+from propagation_state import PropagationState
 from type_aliases import VarIndex
 
 # See "Preprocessing and Probing Techniques for Mixed Integer Programming Problems" by M.W.P. Savelsbergh for more details on the techniques we will implement in this project.
@@ -14,25 +15,21 @@ from type_aliases import VarIndex
 # For this project, we are only interested in probing, so we don't need the objective function.
 # The (non-bound) constraints are stored in the form Ax <= b, where A is a sparse matrix and b is a dense vector.
 # Additionally, we store the variable bounds (lb / ub) and whether the variables are integer or continuous (is_integer).
-@dataclass
+@dataclass(frozen=True)
 class MILPProblem:
-    def __init__(
-        self,
-        name: str,
-        A: sp.csr_matrix,
-        b: npt.NDArray[np.float64],
-        lb: npt.NDArray[np.float64],
-        ub: npt.NDArray[np.float64],
-        is_integer: npt.NDArray[np.bool_],
-    ):
-        self.A = A
-        if self.num_constraints != b.size:
+    name: str
+    A: sp.csr_matrix
+    b: npt.NDArray[np.float64]
+    original_lb: npt.NDArray[np.float64]
+    original_ub: npt.NDArray[np.float64]
+    is_integer: npt.NDArray[np.bool_]
+
+    def __post_init__(self):
+        if self.num_constraints != self.b.size:
             raise ValueError("Number of rows in A must match the length of b")
-        self.name = name
-        self.b = b
-        self.lb = lb
-        self.ub = ub
-        self.is_integer = is_integer
+        self.b.setflags(write=False)
+        self.original_lb.setflags(write=False)
+        self.original_ub.setflags(write=False)
 
     @property
     def num_constraints(self) -> int:
@@ -47,14 +44,16 @@ class MILPProblem:
     def extend_with_constraint(
         self, var_index: VarIndex, bound: BoundInterval
     ) -> "MILPProblem":
-        lb = self.lb.copy()
-        ub = self.ub.copy()
+        lb = self.original_lb.copy()
+        ub = self.original_ub.copy()
         lb[var_index] = max(lb[var_index], bound.lower_bound)
         ub[var_index] = min(ub[var_index], bound.upper_bound)
         return MILPProblem(self.name, self.A, self.b, lb, ub, self.is_integer)
 
     # i is the index of the constraint to operate on.
-    def _L_min(self, i: int, except_k: Optional[VarIndex] = None) -> float:
+    def _L_min(
+        self, i: int, state: PropagationState, except_k: Optional[VarIndex] = None
+    ) -> float:
         """
         Computes the minimum value of the left-hand side of constraint i, given the current variable bounds.
         """
@@ -71,55 +70,65 @@ class MILPProblem:
             if self.A[i, j] == 0:
                 continue
             elif self.A[i, j] > 0:
-                res += a_ij * self.lb[j]
+                res += a_ij * state.lb[j]
             else:
-                res += a_ij * self.ub[j]
+                res += a_ij * state.ub[j]
         return res
 
     # i is the index of the constraint to operate on.
-    def _L_max(self, i: int, except_k: Optional[VarIndex] = None) -> float:
-        """
-        Computes the maximum value of the left-hand side of constraint i, given the current variable bounds.
-        """
-        if not (0 <= i < self.num_constraints):
-            raise IndexError("Constraint index out of bounds")
-        if except_k is not None:
-            if not (0 <= except_k < self.num_variables):
-                raise IndexError("Variable index k out of bounds")
-        res = 0.0
-        for j in range(self.num_variables):
-            if j == except_k:
-                continue
-            a_ij = cast(float, self.A[i, j])
-            if a_ij == 0:
-                continue
-            elif a_ij > 0:
-                res += a_ij * self.ub[j]
-            else:
-                res += a_ij * self.lb[j]
-        return res
+    # def _L_max(
+    #     self, i: int, state: PropagationState, except_k: Optional[VarIndex] = None
+    # ) -> float:
+    #     """
+    #     Computes the maximum value of the left-hand side of constraint i, given the current variable bounds.
+    #     """
+    #     if not (0 <= i < self.num_constraints):
+    #         raise IndexError("Constraint index out of bounds")
+    #     if except_k is not None:
+    #         if not (0 <= except_k < self.num_variables):
+    #             raise IndexError("Variable index k out of bounds")
+    #     res = 0.0
+    #     for j in range(self.num_variables):
+    #         if j == except_k:
+    #             continue
+    #         a_ij = cast(float, self.A[i, j])
+    #         if a_ij == 0:
+    #             continue
+    #         elif a_ij > 0:
+    #             res += a_ij * self.ub[j]
+    #         else:
+    #             res += a_ij * self.lb[j]
+    #     return res
 
     # i is the index of the constraint to check.
-    def constraint_is_infeasible(self, i: int) -> bool:
-        return self._L_min(i) > self.b[i]
+    def constraint_is_infeasible(self, i: int, state: PropagationState) -> bool:
+        return self._L_min(i, state) > self.b[i]
 
-    # i is the index of the constraint to check.
-    def constraint_is_redundant(self, i: int) -> bool:
-        return self._L_max(i) <= self.b[i]
+    # # i is the index of the constraint to check.
+    # def constraint_is_redundant(self, i: int, state: PropagationState) -> bool:
+    #     return self._L_max(i, state) <= self.b[i]
 
     # i is the index of the constraint to check
     # k is the index of the variable to check
-    def get_tight_upper_bound(self, i: int, k: VarIndex) -> float:
+    def get_tight_upper_bound(
+        self, i: int, k: VarIndex, state: PropagationState
+    ) -> float:
         if self.A[i, k] <= 0:
             raise ValueError("Coefficient must be positive for this to work")
         a_ik = cast(float, self.A[i, k])
-        return min(self.ub[k], (self.b[i] - self._L_min(i, except_k=k)) / a_ik)
+        return min(
+            self.original_ub[k], (self.b[i] - self._L_min(i, state, except_k=k)) / a_ik
+        )
 
-    def get_tight_lower_bound(self, i: int, k: VarIndex) -> float:
+    def get_tight_lower_bound(
+        self, i: int, k: VarIndex, state: PropagationState
+    ) -> float:
         if self.A[i, k] >= 0:
             raise ValueError("Coefficient must be negative for this to work")
         a_ik = cast(float, self.A[i, k])
-        return max(self.lb[k], (self.b[i] - self._L_min(i, except_k=k)) / a_ik)
+        return max(
+            self.original_lb[k], (self.b[i] - self._L_min(i, state, except_k=k)) / a_ik
+        )
 
     @classmethod
     def from_mps_file(cls, name: str, path: str) -> "MILPProblem":
