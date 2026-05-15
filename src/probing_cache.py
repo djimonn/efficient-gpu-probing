@@ -104,13 +104,13 @@ class ProbingCache:
     ) -> Tuple[BoundInterval, BoundInterval]:
         if interval.upper_bound - interval.lower_bound == 1:
             return (
-                BoundInterval(interval.lower_bound, interval.lower_bound),
-                BoundInterval(interval.upper_bound, interval.upper_bound),
+                BoundInterval.from_single_value(interval.lower_bound),
+                BoundInterval.from_single_value(interval.upper_bound),
             )
         elif math.isfinite(interval.lower_bound) and math.isfinite(
             interval.upper_bound
         ):
-            mid = (interval.lower_bound + interval.upper_bound) / 2
+            mid = math.floor(interval.lower_bound + interval.upper_bound) / 2
             return (
                 BoundInterval(interval.lower_bound, mid),
                 BoundInterval(mid + 1, interval.upper_bound),
