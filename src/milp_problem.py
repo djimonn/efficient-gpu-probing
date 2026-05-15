@@ -158,5 +158,8 @@ class MILPProblem:
             b_leq,
             lb,
             ub,
-            np.array([v.VType == gp.GRB.INTEGER for v in vars_], dtype=np.bool_),
+            np.array(
+                [v.VType == gp.GRB.INTEGER or v.VType == gp.GRB.BINARY for v in vars_],
+                dtype=np.bool_,
+            ),
         )

@@ -201,7 +201,7 @@ def test_constraint_is_redundant():
 
 def test_tight_bounds():
     # example problem:
-    # max ... (objective function doesn't matter for this test / us)
+    # max   ... (objective function doesn't matter for this test / us)
     # s.t.  2x0 + 3x1 - x2 <= 8  (0)
     #       -x0 + 2x1 + x2 <= -1 (1)
     #       x0  +  x1      <= 20 (2)
@@ -225,5 +225,5 @@ def test_tight_bounds():
         problem.ub[1], (8 - (2 * 0 - 1 * 4)) / 3
     )
     assert problem.get_tight_lower_bound(0, 2) == max(
-        problem.lb[2], (2 * 0 + 3 * 0 - 8) / -1
+        problem.lb[2], (8 - 2 * 0 + 3 * 0) / -1
     )
