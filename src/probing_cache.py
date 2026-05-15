@@ -55,7 +55,7 @@ class ProbingCache:
                                     extended_problem.get_tight_upper_bound(i, k=k)
                                 )
                             except (
-                                Exception
+                                ValueError
                             ):  # get_tight_lower_bound may raise an exception if the sign of the coefficient of variable k in constraint i is 'wrong'
                                 pass
                             tight_lower_bound = self.problem.lb[k]
@@ -64,7 +64,7 @@ class ProbingCache:
                                     extended_problem.get_tight_lower_bound(i, k=k)
                                 )
                             except (
-                                Exception
+                                ValueError
                             ):  # get_tight_upper_bound may raise an exception if the sign of the coefficient of variable k in constraint i is 'wrong'
                                 pass
 

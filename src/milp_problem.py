@@ -26,9 +26,8 @@ class MILPProblem:
         is_integer: npt.NDArray[np.bool_],
     ):
         self.A = A
-        assert (
-            self.num_constraints == b.size
-        ), "Number of rows in A must match the length of b"
+        if self.num_constraints != b.size:
+            raise ValueError("Number of rows in A must match the length of b")
         self.name = name
         self.b = b
         self.lb = lb
@@ -59,9 +58,11 @@ class MILPProblem:
         """
         Computes the minimum value of the left-hand side of constraint i, given the current variable bounds.
         """
-        assert 0 <= i < self.num_constraints, "Constraint index out of bounds"
+        if not (0 <= i < self.num_constraints):
+            raise IndexError("Constraint index out of bounds")
         if except_k:
-            assert 0 <= except_k < self.num_variables, "Variable index out of bounds"
+            if not (0 <= except_k < self.num_variables):
+                raise IndexError("Variable index k out of bounds")
         res = 0.0
         for j in range(self.num_variables):
             if j == except_k:
@@ -80,9 +81,11 @@ class MILPProblem:
         """
         Computes the maximum value of the left-hand side of constraint i, given the current variable bounds.
         """
-        assert 0 <= i < self.num_constraints, "Constraint index out of bounds"
+        if not (0 <= i < self.num_constraints):
+            raise IndexError("Constraint index out of bounds")
         if except_k:
-            assert 0 <= except_k < self.num_variables, "Variable index out of bounds"
+            if not (0 <= except_k < self.num_variables):
+                raise IndexError("Variable index k out of bounds")
         res = 0.0
         for j in range(self.num_variables):
             if j == except_k:
@@ -107,12 +110,14 @@ class MILPProblem:
     # i is the index of the constraint to check
     # k is the index of the variable to check
     def get_tight_upper_bound(self, i: int, k: VarIndex) -> float:
-        assert self.A[i, k] > 0, "Coefficient must be positive for this to work"
+        if self.A[i, k] < 0:
+            raise ValueError("Coefficient must be positive for this to work")
         a_ik = cast(float, self.A[i, k])
         return min(self.ub[k], (self.b[i] - self._L_min(i, except_k=k)) / a_ik)
 
     def get_tight_lower_bound(self, i: int, k: VarIndex) -> float:
-        assert self.A[i, k] < 0, "Coefficient must be negative for this to work"
+        if self.A[i, k] > 0:
+            raise ValueError("Coefficient must be negative for this to work")
         a_ik = cast(float, self.A[i, k])
         return max(self.lb[k], (self.b[i] - self._L_min(i, except_k=k)) / a_ik)
 

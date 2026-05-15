@@ -29,7 +29,6 @@ class CacheEntry:
         if not self.is_feasible:
             print("not feasible bra")
             return False
-        assert self.var_bounds is not None, "Feasible entries must have bounds"
 
         changed = False
         # if var_index not in self.var_bounds:
