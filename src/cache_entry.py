@@ -1,11 +1,17 @@
+from typing import Optional
+
 from bound_interval import BoundInterval
 from type_aliases import VarIndex
 
 
 class CacheEntry:
-    def __init__(self, is_feasible: bool):
+    def __init__(
+        self,
+        is_feasible: bool,
+        var_bounds: Optional[dict[VarIndex, BoundInterval]] = None,
+    ):
         self.is_feasible = is_feasible
-        self.var_bounds: dict[VarIndex, BoundInterval] = {}
+        self.var_bounds: dict[VarIndex, BoundInterval] = var_bounds or {}
 
     def to_string(self) -> str:
         if not self.is_feasible:
