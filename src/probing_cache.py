@@ -1,5 +1,5 @@
 import math
-from typing import Tuple
+from typing import Generator, Tuple, cast
 
 from bound_interval import BoundInterval
 from cache_entry import CacheEntry
@@ -57,14 +57,23 @@ class ProbingCache:
         state = PropagationState(problem.original_lb.copy(), problem.original_ub.copy())
         cache_entry = CacheEntry(True)
 
+        def row_nonzeros(i: int) -> Generator[VarIndex, None, None]:
+            start = problem.A.indptr[i]  # type: ignore
+            end = problem.A.indptr[i + 1]  # type: ignore
+            for ptr in range(start, end):  # type: ignore
+                yield problem.A.indices[ptr]  # type: ignore
+
         changed = True
         while changed:
             changed = False
             for i in range(problem.num_constraints):
                 if problem.constraint_is_infeasible(i, state):
                     return CacheEntry(False)
-                for k in range(problem.num_variables):
-                    new_bounds = self._compute_tight_bounds(problem, i, k, state)
+                for k in row_nonzeros(i):
+                    # for k in range(problem.num_variables):
+                    new_bounds = self._compute_tight_bounds(problem, i, k, state)  # type: ignore
+                    if new_bounds.lower_bound > new_bounds.upper_bound:
+                        return CacheEntry(False)
                     if new_bounds.lower_bound > state.lb[k]:
                         state.lb[k] = new_bounds.lower_bound
                         changed = True
