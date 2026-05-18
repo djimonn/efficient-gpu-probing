@@ -1,5 +1,5 @@
 import math
-from typing import Generator, Tuple, cast
+from typing import Generator, Tuple
 
 from bound_interval import BoundInterval
 from cache_entry import CacheEntry
