@@ -3,3 +3,4 @@ scipy
 gurobipy
 pytest
 pypdf
+numba
