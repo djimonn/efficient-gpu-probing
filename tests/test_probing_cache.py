@@ -1,6 +1,14 @@
+import pytest
+
 from bound_interval import BoundInterval
 from milp_problem import MILPProblem
 from probing_cache import ProbingCache
+from numba import cuda  # type: ignore
+
+
+@pytest.mark.skipif(not cuda.is_available(), reason="Requires GPU")
+def test_propagate_until_fixpoint_naiv_GPU():
+    assert False, "TODO: implement test for propagate_until_fixpoint_naiv_GPU"
 
 
 def test_iterative_probing():
