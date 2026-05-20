@@ -264,7 +264,6 @@ class ProbingCache:
                         np.empty(0, dtype=np.float64),
                     )
                 for k in row_nonzeros(i):
-                    # for k in range(problem.num_variables):
                     new_bounds = self._compute_tight_bounds(problem, i, k, state)  # type: ignore
                     if new_bounds.lower_bound > state.lb[k]:
                         state.lb[k] = new_bounds.lower_bound
@@ -286,6 +285,14 @@ class ProbingCache:
         changed_lb = state.lb[changed_indices]
         changed_ub = state.ub[changed_indices]
         return True, changed_indices, changed_lb, changed_ub
+    
+    def _propagate_until_fixpoint_advanced_GPU(self, problem: MILPProblem) -> tuple[
+        bool,
+        npt.NDArray[np.int64],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+    ]:
+        pass
 
     def _propagate_until_fixpoint_naiv_GPU(
         self, problem: MILPProblem
@@ -352,11 +359,7 @@ class ProbingCache:
             )
             cuda.synchronize()
             if int(d_infeasible.copy_to_host()[0]) != 0:
-                return (
-                    False,
-                    np.empty(0, dtype=np.float64),
-                    np.empty(0, dtype=np.float64),
-                )  # type: ignore
+                return PropagationResult(False)
 
             propagate_variables_kernel[var_blocks, threads_per_block](  # type: ignore
                 d_csr_indptr,
@@ -378,18 +381,12 @@ class ProbingCache:
 
             if int(d_infeasible.copy_to_host()[0]) != 0:
                 return PropagationResult(is_feasible=False)
-                # return (
-                #     False,
-                #     np.empty(0, dtype=np.float64),
-                #     np.empty(0, dtype=np.float64),
-                # )  # type: ignore
 
             changed = int(d_changed.copy_to_host()[0]) != 0
             d_lb, d_lb_next = d_lb_next, d_lb
             d_ub, d_ub_next = d_ub_next, d_ub
             if not changed:
                 return PropagationResult(True, d_lb.copy_to_host(), d_ub.copy_to_host()) # type: ignore
-                # return True, d_lb.copy_to_host(), d_ub.copy_to_host()  # type: ignore
 
         raise RuntimeError(
             f"GPU propagation did not converge after {max_iterations} iterations."
@@ -412,22 +409,15 @@ class ProbingCache:
                 if problem.constraint_is_infeasible(i, state):
                     return PropagationResult(is_feasible=False)
                 for k in row_nonzeros(i):
-                    # for k in range(problem.num_variables):
                     new_bounds = self._compute_tight_bounds(problem, i, k, state)  # type: ignore
                     if new_bounds.lower_bound > new_bounds.upper_bound:
                         return PropagationResult(is_feasible=False)
                     if new_bounds.lower_bound > state.lb[k]:
                         state.lb[k] = new_bounds.lower_bound
                         changed = True
-                        # cache_entry.var_bounds[k] = BoundInterval(
-                        #     state.lb[k], state.ub[k]
-                        # )
                     if new_bounds.upper_bound < state.ub[k]:
                         state.ub[k] = new_bounds.upper_bound
                         changed = True
-                        # cache_entry.var_bounds[k] = BoundInterval(
-                        #     state.lb[k], state.ub[k]
-                        # )
         return PropagationResult(is_feasible=True, lb=state.lb, ub=state.ub)
 
     def _split_interval(
