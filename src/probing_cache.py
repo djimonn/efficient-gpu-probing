@@ -137,6 +137,18 @@ class ProbingCache:
         self.problem = problem
         self.probe_results: dict[Tuple[VarIndex, BoundInterval], CacheEntry] = {}
 
+    def probe_gpu(self, var_index: VarIndex) -> None:
+        default_interval = BoundInterval(self.problem.original_lb[var_index], self.problem.original_ub[var_index])
+        for probe_interval in self._split_interval(default_interval):
+            extended_problem = self.problem.extend_with_constraint(var_index, probe_interval)
+            propagation_result = self._propagate_until_fixpoint_naiv_GPU(extended_problem)
+            print(f"moin meister: {propagation_result}")
+            _naive_cache_entry = self._build_cache_entry_by_host_scan(
+                propagation_result
+            )
+            self.probe_results[(var_index, probe_interval)] = _naive_cache_entry
+            
+
     def probe(self, var_index: VarIndex) -> None:
         default_interval = BoundInterval(
             self.problem.original_lb[var_index], self.problem.original_ub[var_index]
@@ -365,17 +377,19 @@ class ProbingCache:
             cuda.synchronize()
 
             if int(d_infeasible.copy_to_host()[0]) != 0:
-                return (
-                    False,
-                    np.empty(0, dtype=np.float64),
-                    np.empty(0, dtype=np.float64),
-                )  # type: ignore
+                return PropagationResult(is_feasible=False)
+                # return (
+                #     False,
+                #     np.empty(0, dtype=np.float64),
+                #     np.empty(0, dtype=np.float64),
+                # )  # type: ignore
 
             changed = int(d_changed.copy_to_host()[0]) != 0
             d_lb, d_lb_next = d_lb_next, d_lb
             d_ub, d_ub_next = d_ub_next, d_ub
             if not changed:
-                return True, d_lb.copy_to_host(), d_ub.copy_to_host()  # type: ignore
+                return PropagationResult(True, d_lb.copy_to_host(), d_ub.copy_to_host()) # type: ignore
+                # return True, d_lb.copy_to_host(), d_ub.copy_to_host()  # type: ignore
 
         raise RuntimeError(
             f"GPU propagation did not converge after {max_iterations} iterations."

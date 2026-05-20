@@ -3,4 +3,5 @@ scipy
 gurobipy
 pytest
 pypdf
+cuda-python
 numba
