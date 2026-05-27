@@ -7,13 +7,60 @@ from numba import cuda  # type: ignore
 
 
 @pytest.mark.skipif(not cuda.is_available(), reason="Requires GPU")
-def test_propagate_until_fixpoint_naiv_GPU():
+def test__propagate_until_fixpoint_advanced_GPU():
     problem = MILPProblem.from_mps_file(
         name="iterative example", path="data/example_p13.mps"
     )
     probing_cache = ProbingCache(problem)
     ### x_1 ###
     probing_cache.probe_gpu(0)
+    ## x_1 = 0 ##
+    probe_res = probing_cache.probe_results[(0, BoundInterval.from_single_value(0.0))]
+    assert probe_res.is_feasible
+    # y_1 = 0
+    assert probe_res.var_bounds[3] == BoundInterval.from_single_value(0.0)
+    # y_2 = 20
+    print(f"y_2 = {probe_res.var_bounds[4]}")
+    assert probe_res.var_bounds[4] == BoundInterval.from_single_value(20.0)
+    # y_3 = 5
+    assert probe_res.var_bounds[5] == BoundInterval.from_single_value(5.0)
+    # x_2 = 1
+    assert probe_res.var_bounds[1] == BoundInterval.from_single_value(1.0)
+    # x_3 = 1
+    assert probe_res.var_bounds[2] == BoundInterval.from_single_value(1.0)
+
+    ### x_2 ###
+    probing_cache.probe_gpu(1)
+    ## x_2 = 0 ##
+    probe_res = probing_cache.probe_results[(1, BoundInterval.from_single_value(0.0))]
+    assert probe_res.is_feasible
+    # y_2 = 0
+    assert probe_res.var_bounds[4] == BoundInterval.from_single_value(0.0)
+    # y_1 = 15
+    assert probe_res.var_bounds[3] == BoundInterval.from_single_value(15.0)
+    # x_1 = 1
+    assert probe_res.var_bounds[0] == BoundInterval.from_single_value(1.0)
+
+    ### x_3 ###
+    probing_cache.probe_gpu(2)
+    ## x_3 = 0 ##
+    probe_res = probing_cache.probe_results[(2, BoundInterval.from_single_value(0.0))]
+    assert probe_res.is_feasible
+    # y_3 = 0
+    assert probe_res.var_bounds[5] == BoundInterval.from_single_value(0.0)
+    # x_1 = 1
+    print(f"x_1 = {probe_res.var_bounds[0].to_string()}")
+    assert probe_res.var_bounds[0] == BoundInterval.from_single_value(1.0)
+
+
+@pytest.mark.skipif(not cuda.is_available(), reason="Requires GPU")
+def test_propagate_until_fixpoint_naiv_GPU():
+    problem = MILPProblem.from_mps_file(
+        name="iterative example", path="data/example_p13.mps"
+    )
+    probing_cache = ProbingCache(problem)
+    ### x_1 ###
+    probing_cache.probe_gpu_advanced(0)
     ## x_1 = 0 ##
     probe_res = probing_cache.probe_results[(0, BoundInterval.from_single_value(0.0))]
     assert probe_res.is_feasible

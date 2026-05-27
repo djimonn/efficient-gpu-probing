@@ -13,6 +13,7 @@ from type_aliases import VarIndex
 from milp_problem import MILPProblem
 
 _NAIVE_GPU_KERNELS = None
+_ADVANCED_GPU_KERNELS = None
 
 
 def _get_naive_gpu_kernels() -> Tuple[Callable[..., None], Callable[..., None]]:
@@ -132,22 +133,159 @@ def _get_naive_gpu_kernels() -> Tuple[Callable[..., None], Callable[..., None]]:
     return _NAIVE_GPU_KERNELS
 
 
+def _get_advanced_gpu_kernels() -> (
+    Tuple[Callable[..., None], Callable[..., None], Callable[..., None]]
+):
+    global _ADVANCED_GPU_KERNELS
+    if _ADVANCED_GPU_KERNELS is not None:
+        return _ADVANCED_GPU_KERNELS
+
+    check_row_infeasibility_kernel, _ = _get_naive_gpu_kernels()
+    from numba import cuda  # type: ignore
+
+    @cuda.jit
+    def propagate_variables_with_change_tracking_kernel(
+        csr_indptr,
+        csr_indices,
+        csr_data,
+        csc_indptr,
+        csc_indices,
+        csc_data,
+        b,
+        lb,
+        ub,
+        is_integer,
+        lb_next,
+        ub_next,
+        changed,
+        infeasible,
+        changed_mask,
+        changed_count,
+        changed_indices,
+    ):
+        k = cuda.grid(1)
+        if k >= lb.size:
+            return
+
+        old_lb = lb[k]
+        old_ub = ub[k]
+        new_lb = old_lb
+        new_ub = old_ub
+
+        for col_ptr in range(csc_indptr[k], csc_indptr[k + 1]):  # type: ignore
+            i = csc_indices[col_ptr]
+            a_ik = csc_data[col_ptr]
+
+            l_min_except_k = 0.0
+            for row_ptr in range(csr_indptr[i], csr_indptr[i + 1]):
+                j = csr_indices[row_ptr]
+                if j == k:
+                    continue
+
+                a_ij = csr_data[row_ptr]
+                if a_ij == 0:
+                    continue
+                elif a_ij > 0:
+                    l_min_except_k += a_ij * lb[j]
+                else:
+                    l_min_except_k += a_ij * ub[j]
+
+            candidate = (b[i] - l_min_except_k) / a_ik
+            if a_ik > 0.0:
+                if candidate < new_ub:
+                    new_ub = candidate
+            elif a_ik < 0.0:
+                if candidate > new_lb:
+                    new_lb = candidate
+
+        if is_integer[k]:
+            if not math.isinf(new_lb):
+                new_lb = math.ceil(new_lb)
+            if not math.isinf(new_ub):
+                new_ub = math.floor(new_ub)
+
+        if new_lb > new_ub:
+            cuda.atomic.max(infeasible, 0, 1)  # type: ignore
+
+        lb_next[k] = new_lb
+        ub_next[k] = new_ub
+
+        if new_lb > old_lb or new_ub < old_ub:
+            cuda.atomic.max(changed, 0, 1)  # type: ignore
+
+            # There is one thread per variable, so no other thread writes
+            # changed_mask[k]. The atomic is only needed for the shared count.
+            if changed_mask[k] == 0:
+                changed_mask[k] = 1
+                pos = cuda.atomic.add(changed_count, 0, 1)  # type: ignore
+                changed_indices[pos] = k
+
+    @cuda.jit
+    def gather_changed_bounds_kernel(
+        changed_indices,
+        lb,
+        ub,
+        compact_indices,
+        compact_lb,
+        compact_ub,
+    ):
+        pos = cuda.grid(1)
+        if pos >= compact_indices.size:
+            return
+
+        k = changed_indices[pos]
+        compact_indices[pos] = k
+        compact_lb[pos] = lb[k]
+        compact_ub[pos] = ub[k]
+
+    _ADVANCED_GPU_KERNELS = (
+        check_row_infeasibility_kernel,
+        propagate_variables_with_change_tracking_kernel,
+        gather_changed_bounds_kernel,
+    )
+    return _ADVANCED_GPU_KERNELS
+
+
 class ProbingCache:
     def __init__(self, problem: MILPProblem):
         self.problem = problem
         self.probe_results: dict[Tuple[VarIndex, BoundInterval], CacheEntry] = {}
 
-    def probe_gpu(self, var_index: VarIndex) -> None:
-        default_interval = BoundInterval(self.problem.original_lb[var_index], self.problem.original_ub[var_index])
+    def probe_gpu_advanced(self, var_index: VarIndex) -> None:
+        default_interval = BoundInterval(
+            self.problem.original_lb[var_index], self.problem.original_ub[var_index]
+        )
         for probe_interval in self._split_interval(default_interval):
-            extended_problem = self.problem.extend_with_constraint(var_index, probe_interval)
-            propagation_result = self._propagate_until_fixpoint_naiv_GPU(extended_problem)
-            print(f"moin meister: {propagation_result}")
+            extended_problem = self.problem.extend_with_constraint(
+                var_index, probe_interval
+            )
+            # advanced approach: only return the bounds that have changed/improved
+            (
+                is_feasible,
+                changed_indices,
+                changed_lb,
+                changed_ub,
+            ) = self._propagate_until_fixpoint_advanced_GPU(extended_problem)
+            advanced_cache_entry = self._build_cache_entry_from_compacted_bounds(
+                is_feasible, changed_indices, changed_lb, changed_ub
+            )
+            self.probe_results[(var_index, probe_interval)] = advanced_cache_entry
+
+    def probe_gpu(self, var_index: VarIndex) -> None:
+        default_interval = BoundInterval(
+            self.problem.original_lb[var_index], self.problem.original_ub[var_index]
+        )
+        for probe_interval in self._split_interval(default_interval):
+            extended_problem = self.problem.extend_with_constraint(
+                var_index, probe_interval
+            )
+            propagation_result = self._propagate_until_fixpoint_naiv_GPU(
+                extended_problem
+            )
             _naive_cache_entry = self._build_cache_entry_by_host_scan(
                 propagation_result
             )
             self.probe_results[(var_index, probe_interval)] = _naive_cache_entry
-            
 
     def probe(self, var_index: VarIndex) -> None:
         default_interval = BoundInterval(
@@ -237,10 +375,10 @@ class ProbingCache:
         )
 
     def _propagate_until_fixpoint_advanced(self, problem: MILPProblem) -> tuple[
-        bool,
-        npt.NDArray[np.int64],
-        npt.NDArray[np.float64],
-        npt.NDArray[np.float64],
+        bool,  # is_feasible
+        npt.NDArray[np.int64],  # changed_indices
+        npt.NDArray[np.float64],  # changed_lb
+        npt.NDArray[np.float64],  # changed_ub
     ]:
 
         def row_nonzeros(i: int) -> Generator[VarIndex, None, None]:
@@ -285,14 +423,152 @@ class ProbingCache:
         changed_lb = state.lb[changed_indices]
         changed_ub = state.ub[changed_indices]
         return True, changed_indices, changed_lb, changed_ub
-    
+
     def _propagate_until_fixpoint_advanced_GPU(self, problem: MILPProblem) -> tuple[
-        bool,
-        npt.NDArray[np.int64],
-        npt.NDArray[np.float64],
-        npt.NDArray[np.float64],
+        bool,  # is_feasible
+        npt.NDArray[np.int64],  # changed_indices
+        npt.NDArray[np.float64],  # changed_lb
+        npt.NDArray[np.float64],  # changed_ub
     ]:
-        pass
+        (
+            check_row_infeasibility_kernel,
+            propagate_variables_with_change_tracking_kernel,
+            gather_changed_bounds_kernel,
+        ) = _get_advanced_gpu_kernels()
+        from numba import cuda  # type: ignore
+
+        A_csc = problem.A.tocsc()
+
+        csr_indptr = np.ascontiguousarray(problem.A.indptr, dtype=np.int64)
+        csr_indices = np.ascontiguousarray(problem.A.indices, dtype=np.int64)
+        csr_data = np.ascontiguousarray(problem.A.data, dtype=np.float64)
+        csc_indptr = np.ascontiguousarray(A_csc.indptr, dtype=np.int64)
+        csc_indices = np.ascontiguousarray(A_csc.indices, dtype=np.int64)
+        csc_data = np.ascontiguousarray(A_csc.data, dtype=np.float64)
+        rhs = np.ascontiguousarray(problem.b, dtype=np.float64)
+        initial_lb = np.ascontiguousarray(problem.original_lb, dtype=np.float64)
+        initial_ub = np.ascontiguousarray(problem.original_ub, dtype=np.float64)
+        integer_flags = np.ascontiguousarray(problem.is_integer, dtype=np.bool_)
+
+        num_constraints = rhs.size
+        num_variables = initial_lb.size
+
+        d_csr_indptr = cuda.to_device(csr_indptr)
+        d_csr_indices = cuda.to_device(csr_indices)
+        d_csr_data = cuda.to_device(csr_data)
+        d_csc_indptr = cuda.to_device(csc_indptr)
+        d_csc_indices = cuda.to_device(csc_indices)
+        d_csc_data = cuda.to_device(csc_data)
+        d_b = cuda.to_device(rhs)
+        d_is_integer = cuda.to_device(integer_flags)
+
+        d_lb = cuda.to_device(initial_lb)
+        d_ub = cuda.to_device(initial_ub)
+        d_lb_next = cuda.device_array_like(d_lb)
+        d_ub_next = cuda.device_array_like(d_ub)
+
+        zero_flag = np.zeros(1, dtype=np.int32)
+        d_changed = cuda.to_device(zero_flag)
+        d_infeasible = cuda.to_device(zero_flag)
+
+        d_changed_mask = cuda.to_device(np.zeros(num_variables, dtype=np.int32))
+        d_changed_count = cuda.to_device(zero_flag)
+        d_changed_indices = cuda.device_array(num_variables, dtype=np.int64)  # type: ignore
+
+        threads_per_block = 128
+        row_blocks = max(1, math.ceil(num_constraints / threads_per_block))
+        var_blocks = max(1, math.ceil(num_variables / threads_per_block))
+
+        max_iterations = max(1000, 2 * (num_constraints + num_variables))
+        for _ in range(max_iterations):
+            d_changed.copy_to_device(zero_flag)
+            d_infeasible.copy_to_device(zero_flag)
+
+            check_row_infeasibility_kernel[row_blocks, threads_per_block](  # type: ignore
+                d_csr_indptr,
+                d_csr_indices,
+                d_csr_data,
+                d_b,
+                d_lb,
+                d_ub,
+                d_infeasible,
+            )
+            cuda.synchronize()
+            if int(d_infeasible.copy_to_host()[0]) != 0:
+                return (
+                    False,
+                    np.empty(0, dtype=np.int64),
+                    np.empty(0, dtype=np.float64),
+                    np.empty(0, dtype=np.float64),
+                )
+
+            propagate_variables_with_change_tracking_kernel[var_blocks, threads_per_block](  # type: ignore
+                d_csr_indptr,
+                d_csr_indices,
+                d_csr_data,
+                d_csc_indptr,
+                d_csc_indices,
+                d_csc_data,
+                d_b,
+                d_lb,
+                d_ub,
+                d_is_integer,
+                d_lb_next,
+                d_ub_next,
+                d_changed,
+                d_infeasible,
+                d_changed_mask,
+                d_changed_count,
+                d_changed_indices,
+            )
+            cuda.synchronize()
+
+            if int(d_infeasible.copy_to_host()[0]) != 0:
+                return (
+                    False,
+                    np.empty(0, dtype=np.int64),
+                    np.empty(0, dtype=np.float64),
+                    np.empty(0, dtype=np.float64),
+                )
+
+            changed = int(d_changed.copy_to_host()[0]) != 0
+            d_lb, d_lb_next = d_lb_next, d_lb
+            d_ub, d_ub_next = d_ub_next, d_ub
+            if not changed:
+                num_changed = int(d_changed_count.copy_to_host()[0])
+                if num_changed == 0:
+                    return (
+                        True,
+                        np.empty(0, dtype=np.int64),
+                        np.empty(0, dtype=np.float64),
+                        np.empty(0, dtype=np.float64),
+                    )
+
+                d_compact_indices = cuda.device_array(num_changed, dtype=np.int64)  # type: ignore
+                d_compact_lb = cuda.device_array(num_changed, dtype=np.float64)
+                d_compact_ub = cuda.device_array(num_changed, dtype=np.float64)
+
+                compact_blocks = max(1, math.ceil(num_changed / threads_per_block))
+                gather_changed_bounds_kernel[compact_blocks, threads_per_block](  # type: ignore
+                    d_changed_indices,
+                    d_lb,
+                    d_ub,
+                    d_compact_indices,
+                    d_compact_lb,
+                    d_compact_ub,
+                )
+                cuda.synchronize()
+
+                return (
+                    True,
+                    d_compact_indices.copy_to_host(),
+                    d_compact_lb.copy_to_host(),
+                    d_compact_ub.copy_to_host(),
+                )  # type: ignore
+
+        raise RuntimeError(
+            f"Advanced GPU propagation did not converge after {max_iterations} iterations."
+        )
 
     def _propagate_until_fixpoint_naiv_GPU(
         self, problem: MILPProblem
@@ -301,7 +577,7 @@ class ProbingCache:
             check_row_infeasibility_kernel,
             propagate_variables_kernel,
         ) = _get_naive_gpu_kernels()
-        from numba import cuda
+        from numba import cuda  # type: ignore
 
         A_csc = problem.A.tocsc()
 
@@ -386,7 +662,7 @@ class ProbingCache:
             d_lb, d_lb_next = d_lb_next, d_lb
             d_ub, d_ub_next = d_ub_next, d_ub
             if not changed:
-                return PropagationResult(True, d_lb.copy_to_host(), d_ub.copy_to_host()) # type: ignore
+                return PropagationResult(True, d_lb.copy_to_host(), d_ub.copy_to_host())  # type: ignore
 
         raise RuntimeError(
             f"GPU propagation did not converge after {max_iterations} iterations."
