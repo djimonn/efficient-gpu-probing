@@ -3,5 +3,8 @@ scipy
 gurobipy
 pytest
 pypdf
-cuda-python
+cuda-python ; platform_system == "Linux"
 numba
+pandas
+matplotlib
+seaborn
