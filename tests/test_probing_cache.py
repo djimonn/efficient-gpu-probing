@@ -13,7 +13,7 @@ def test__propagate_until_fixpoint_advanced_GPU():
     )
     probing_cache = ProbingCache(problem)
     ### x_1 ###
-    probing_cache.probe_gpu(0)
+    probing_cache.probe_gpu_naiv(0)
     ## x_1 = 0 ##
     probe_res = probing_cache.probe_results[(0, BoundInterval.from_single_value(0.0))]
     assert probe_res.is_feasible
@@ -30,7 +30,7 @@ def test__propagate_until_fixpoint_advanced_GPU():
     assert probe_res.var_bounds[2] == BoundInterval.from_single_value(1.0)
 
     ### x_2 ###
-    probing_cache.probe_gpu(1)
+    probing_cache.probe_gpu_naiv(1)
     ## x_2 = 0 ##
     probe_res = probing_cache.probe_results[(1, BoundInterval.from_single_value(0.0))]
     assert probe_res.is_feasible
@@ -42,7 +42,7 @@ def test__propagate_until_fixpoint_advanced_GPU():
     assert probe_res.var_bounds[0] == BoundInterval.from_single_value(1.0)
 
     ### x_3 ###
-    probing_cache.probe_gpu(2)
+    probing_cache.probe_gpu_naiv(2)
     ## x_3 = 0 ##
     probe_res = probing_cache.probe_results[(2, BoundInterval.from_single_value(0.0))]
     assert probe_res.is_feasible
@@ -77,7 +77,7 @@ def test_propagate_until_fixpoint_naiv_GPU():
     assert probe_res.var_bounds[2] == BoundInterval.from_single_value(1.0)
 
     ### x_2 ###
-    probing_cache.probe_gpu(1)
+    probing_cache.probe_gpu_naiv(1)
     ## x_2 = 0 ##
     probe_res = probing_cache.probe_results[(1, BoundInterval.from_single_value(0.0))]
     assert probe_res.is_feasible
@@ -89,7 +89,7 @@ def test_propagate_until_fixpoint_naiv_GPU():
     assert probe_res.var_bounds[0] == BoundInterval.from_single_value(1.0)
 
     ### x_3 ###
-    probing_cache.probe_gpu(2)
+    probing_cache.probe_gpu_naiv(2)
     ## x_3 = 0 ##
     probe_res = probing_cache.probe_results[(2, BoundInterval.from_single_value(0.0))]
     assert probe_res.is_feasible

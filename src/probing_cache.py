@@ -3,9 +3,11 @@ import math
 from typing import Callable, Generator, Tuple, cast
 import numpy as np
 import numpy.typing as npt
+import time
 
 from bound_interval import BoundInterval
 from cache_entry import CacheEntry
+from probe_metrics import ProbeMetrics
 from propagation_result import PropagationResult
 from propagation_state import PropagationState
 from type_aliases import VarIndex
@@ -251,7 +253,9 @@ class ProbingCache:
         self.problem = problem
         self.probe_results: dict[Tuple[VarIndex, BoundInterval], CacheEntry] = {}
 
-    def probe_gpu_advanced(self, var_index: VarIndex) -> None:
+    def probe_gpu_advanced(self, var_index: VarIndex) -> ProbeMetrics:
+        start = time.perf_counter()
+
         default_interval = BoundInterval(
             self.problem.original_lb[var_index], self.problem.original_ub[var_index]
         )
@@ -270,8 +274,14 @@ class ProbingCache:
                 is_feasible, changed_indices, changed_lb, changed_ub
             )
             self.probe_results[(var_index, probe_interval)] = advanced_cache_entry
+        return ProbeMetrics(
+            duration_ms=(time.perf_counter() - start) * 1000,
+            num_changed_bounds=len(changed_indices),
+            full_copy=False,
+        )
 
-    def probe_gpu(self, var_index: VarIndex) -> None:
+    def probe_gpu_naiv(self, var_index: VarIndex) -> ProbeMetrics:
+        start = time.perf_counter()
         default_interval = BoundInterval(
             self.problem.original_lb[var_index], self.problem.original_ub[var_index]
         )
@@ -286,6 +296,13 @@ class ProbingCache:
                 propagation_result
             )
             self.probe_results[(var_index, probe_interval)] = _naive_cache_entry
+        return ProbeMetrics(
+            duration_ms=(time.perf_counter() - start) * 1000,
+            num_changed_bounds=(
+                len(propagation_result.lb) if propagation_result.lb is not None else 0
+            ),
+            full_copy=True,
+        )
 
     def probe(self, var_index: VarIndex) -> None:
         default_interval = BoundInterval(
