@@ -2,7 +2,9 @@ import pytest
 
 from bound_interval import BoundInterval
 from milp_problem import MILPProblem
-from probing_cache import ProbingCache
+from probing_cache.advanced_gpu_probing_cache import AdvancedGPUProbingCache
+from probing_cache.naiv_cpu_probing_cache import NaivCPUProbingCache
+from probing_cache.naiv_gpu_probing_cache import NaivGPUProbingCache
 from numba import cuda  # type: ignore
 
 
@@ -11,9 +13,9 @@ def test__propagate_until_fixpoint_advanced_GPU():
     problem = MILPProblem.from_mps_file(
         name="iterative example", path="data/example_p13.mps"
     )
-    probing_cache = ProbingCache(problem)
+    probing_cache = AdvancedGPUProbingCache(problem)
     ### x_1 ###
-    probing_cache.probe_gpu_naiv(0)
+    probing_cache.probe(0)
     ## x_1 = 0 ##
     probe_res = probing_cache.probe_results[(0, BoundInterval.from_single_value(0.0))]
     assert probe_res.is_feasible
@@ -30,7 +32,7 @@ def test__propagate_until_fixpoint_advanced_GPU():
     assert probe_res.var_bounds[2] == BoundInterval.from_single_value(1.0)
 
     ### x_2 ###
-    probing_cache.probe_gpu_naiv(1)
+    probing_cache.probe(1)
     ## x_2 = 0 ##
     probe_res = probing_cache.probe_results[(1, BoundInterval.from_single_value(0.0))]
     assert probe_res.is_feasible
@@ -42,7 +44,7 @@ def test__propagate_until_fixpoint_advanced_GPU():
     assert probe_res.var_bounds[0] == BoundInterval.from_single_value(1.0)
 
     ### x_3 ###
-    probing_cache.probe_gpu_naiv(2)
+    probing_cache.probe(2)
     ## x_3 = 0 ##
     probe_res = probing_cache.probe_results[(2, BoundInterval.from_single_value(0.0))]
     assert probe_res.is_feasible
@@ -58,9 +60,9 @@ def test_propagate_until_fixpoint_naiv_GPU():
     problem = MILPProblem.from_mps_file(
         name="iterative example", path="data/example_p13.mps"
     )
-    probing_cache = ProbingCache(problem)
+    probing_cache = NaivGPUProbingCache(problem)
     ### x_1 ###
-    probing_cache.probe_gpu_advanced(0)
+    probing_cache.probe(0)
     ## x_1 = 0 ##
     probe_res = probing_cache.probe_results[(0, BoundInterval.from_single_value(0.0))]
     assert probe_res.is_feasible
@@ -77,7 +79,7 @@ def test_propagate_until_fixpoint_naiv_GPU():
     assert probe_res.var_bounds[2] == BoundInterval.from_single_value(1.0)
 
     ### x_2 ###
-    probing_cache.probe_gpu_naiv(1)
+    probing_cache.probe(1)
     ## x_2 = 0 ##
     probe_res = probing_cache.probe_results[(1, BoundInterval.from_single_value(0.0))]
     assert probe_res.is_feasible
@@ -89,7 +91,7 @@ def test_propagate_until_fixpoint_naiv_GPU():
     assert probe_res.var_bounds[0] == BoundInterval.from_single_value(1.0)
 
     ### x_3 ###
-    probing_cache.probe_gpu_naiv(2)
+    probing_cache.probe(2)
     ## x_3 = 0 ##
     probe_res = probing_cache.probe_results[(2, BoundInterval.from_single_value(0.0))]
     assert probe_res.is_feasible
@@ -105,7 +107,7 @@ def test_iterative_probing():
     problem = MILPProblem.from_mps_file(
         name="iterative example", path="data/example_p13.mps"
     )
-    probing_cache = ProbingCache(problem)
+    probing_cache = NaivCPUProbingCache(problem)
 
     ### x_1 ###
     probing_cache.probe(0)
@@ -152,7 +154,7 @@ def test_probe_trivial():
     problem = MILPProblem.from_mps_file(
         name="trivial test", path="data/trivial_test.mps"
     )
-    probing_cache = ProbingCache(problem)
+    probing_cache = NaivCPUProbingCache(problem)
 
     ## var 0 ##
     probing_cache.probe(0)

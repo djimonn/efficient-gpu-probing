@@ -1,20 +1,20 @@
 from milp_problem import MILPProblem
 from probe_metrics import ProbeMetrics
-from probing_cache import ProbingCache
+from probing_cache.probing_cache import ProbingCache
 from pathlib import Path
 
 
 def main():
     directory = Path("data/MIPLIB2017_benchmark_set")
-    metrics: list[ProbeMetrics] = []
+    _metrics: list[ProbeMetrics] = []
     for file in directory.iterdir():
         problem = MILPProblem.from_mps_file(name=file.stem, path=str(file))
-        probing_cache_naiv = ProbingCache(problem)
-        probing_cache_advanced = ProbingCache(problem)
-        for var_index in range(problem.num_variables):
-            if problem.is_integer[var_index]:
-                metrics.append(probing_cache_naiv.probe_gpu_naiv(var_index))
-                metrics.append(probing_cache_advanced.probe_gpu_advanced(var_index))
+        # probing_cache_naiv = ProbingCache(problem)
+        # probing_cache_advanced = ProbingCache(problem)
+        # for var_index in range(problem.num_variables):
+        #     if problem.is_integer[var_index]:
+        #         metrics.append(probing_cache_naiv.probe_gpu_naiv(var_index))
+        #         metrics.append(probing_cache_advanced.probe_gpu_advanced(var_index))
     return
 
     problem = MILPProblem.from_mps_file(name="test", path="data/test.mps")
