@@ -1,8 +1,6 @@
 from milp_problem import MILPProblem
 from probe_metrics import ProbeMetrics
-from probing_cache.advanced_cpu_probing_cache import AdvancedCPUProbingCache
 from probing_cache.advanced_gpu_probing_cache import AdvancedGPUProbingCache
-from probing_cache.naiv_cpu_probing_cache import NaivCPUProbingCache
 from probing_cache.naiv_gpu_probing_cache import NaivGPUProbingCache
 from pathlib import Path
 import pandas as pd
@@ -27,20 +25,19 @@ def plot_stuff(metrics: list[ProbeMetrics]) -> None:
     plt.ylabel("Duration [ms]")  # type: ignore
     plt.xlabel("")  # type: ignore
     plt.title("Probe runtime: full bound copy vs compact changed bounds")  # type: ignore
-    plt.show()  # type: ignore
+    plt.savefig("output/plot.png")  # type: ignore
+    plt.close()
 
 
 def main():
-    directory = Path("data/MIPLIB2017_benchmark_set")
     metrics: list[ProbeMetrics] = []
-    i = 0
+    directory = Path("data")
     for file in directory.iterdir():
-        if i > 2:
-            break
-        i += 1
+        if not file.is_file():
+            continue
         problem = MILPProblem.from_mps_file(name=file.stem, path=str(file))
-        probing_cache_naiv = NaivCPUProbingCache(problem)
-        probing_cache_advanced = AdvancedCPUProbingCache(problem)
+        probing_cache_naiv = NaivGPUProbingCache(problem)
+        probing_cache_advanced = AdvancedGPUProbingCache(problem)
         for var_index in range(problem.num_variables):
             if problem.is_integer[var_index]:
                 metrics.append(probing_cache_naiv.probe(var_index))
