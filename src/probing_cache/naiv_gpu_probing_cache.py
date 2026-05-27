@@ -152,11 +152,11 @@ class NaivGPUProbingCache(ProbingCache):
         rhs = np.ascontiguousarray(self.problem.b, dtype=np.float64)
         # add additional constraint
         add_constraint_idx, add_constraint_interval = additional_constraint
-        initial_lb = np.ascontiguousarray(self.problem.original_lb, dtype=np.float64)
+        initial_lb = np.ascontiguousarray(self.problem.original_lb, dtype=np.float64).copy()
         initial_lb[add_constraint_idx] = max(
             add_constraint_interval.lower_bound, initial_lb[add_constraint_idx]
         )
-        initial_ub = np.ascontiguousarray(self.problem.original_ub, dtype=np.float64)
+        initial_ub = np.ascontiguousarray(self.problem.original_ub, dtype=np.float64).copy()
         initial_ub[add_constraint_idx] = min(
             add_constraint_interval.upper_bound, initial_ub[add_constraint_idx]
         )
