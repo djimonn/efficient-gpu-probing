@@ -12,6 +12,10 @@ env/
 logs/*
 !logs/.gitkeep
 
+# Output
+output/*
+!output/.gitkeep
+
 # Build / packaging
 build/
 dist/
