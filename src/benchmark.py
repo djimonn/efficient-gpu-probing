@@ -9,13 +9,19 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from datetime import datetime
+import os
 from numba import cuda  # type: ignore
 
 
 def plot_stuff(metrics: list[ProbeMetrics]) -> None:
     output_dir = Path("output")
     output_dir.mkdir(exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    slurm_job_id = os.environ.get("SLURM_JOB_ID")
+    run_id = (
+        f"slurm_{slurm_job_id}"
+        if slurm_job_id is not None
+        else datetime.now().strftime("%Y%m%d_%H%M%S")
+    )
 
     df = pd.DataFrame(
         {
@@ -57,7 +63,7 @@ def plot_stuff(metrics: list[ProbeMetrics]) -> None:
     plt.xlabel("MIPLIB2017 instance")  # type: ignore
     plt.title("Total probing cache construction time per instance")  # type: ignore
     plt.tight_layout()
-    plt.savefig(output_dir / f"total_runtime_per_instance_{timestamp}.png", dpi=200)  # type: ignore
+    plt.savefig(output_dir / f"total_runtime_per_instance_{run_id}.png", dpi=200)  # type: ignore
     plt.close()
 
     pivot = summary.pivot(
@@ -78,7 +84,7 @@ def plot_stuff(metrics: list[ProbeMetrics]) -> None:
         plt.xlabel("MIPLIB2017 instance")  # type: ignore
         plt.title("Advanced GPU probing speedup per instance")  # type: ignore
         plt.tight_layout()
-        plt.savefig(output_dir / f"speedup_per_instance_{timestamp}.png", dpi=200)  # type: ignore
+        plt.savefig(output_dir / f"speedup_per_instance_{run_id}.png", dpi=200)  # type: ignore
 
 
 def main():
