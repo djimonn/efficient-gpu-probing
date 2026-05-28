@@ -8,4 +8,5 @@
 #SBATCH --error=logs/%x-%j.err
 
 source .venv/bin/activate
+export CUDA_HOME=/afs/math/software/nvidia/cuda/13.0.1
 python src/benchmark.py
