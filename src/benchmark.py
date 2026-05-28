@@ -9,24 +9,72 @@ import matplotlib.pyplot as plt
 
 
 def plot_stuff(metrics: list[ProbeMetrics]) -> None:
+    output_dir = Path("output")
+    output_dir.mkdir(exist_ok=True)
+
     df = pd.DataFrame(
         {
-            "duration_ms": [m.duration_ms for m in metrics],
-            "num_changed_bounds": [m.num_changed_bounds for m in metrics],
+            "instance": [metric.problem.name for metric in metrics],
             "implementation": [
-                "naive/full copy" if m.full_copy else "advanced/compact"
-                for m in metrics
+                "GPU naive" if metric.full_copy else "GPU advanced"
+                for metric in metrics
             ],
+            "duration_ms": [metric.duration_ms for metric in metrics],
+            "num_changed_bounds": [metric.num_changed_bounds for metric in metrics],
         }
     )
 
-    sns.boxplot(data=df, x="implementation", y="duration_ms")
+    if df.empty:
+        print("No metrics collected; skipping plots.")
+        return
+
+    # total runtime per instance + implementation
+    summary = df.groupby(["instance", "implementation"], as_index=False)[
+        "duration_ms"
+    ].sum()
+
+    # sort by naive runtime
+    order = summary[summary["implementation"] == "GPU naive"].sort_values(
+        "duration_ms", ascending=False
+    )["instance"]
+
+    plt.figure(figsize=(14, 6))  # type: ignore
+    sns.barplot(
+        data=summary,  # type: ignore
+        x="instance",
+        y="duration_ms",
+        hue="implementation",
+        order=order,
+    )
     plt.yscale("log")  # type: ignore
-    plt.ylabel("Duration [ms]")  # type: ignore
-    plt.xlabel("")  # type: ignore
-    plt.title("Probe runtime: full bound copy vs compact changed bounds")  # type: ignore
-    plt.savefig("output/plot.png")  # type: ignore
+    plt.xticks(rotation=70, ha="right")  # type: ignore
+    plt.ylabel("Total probing cache construction time [ms]")  # type: ignore
+    plt.xlabel("MIPLIB2017 instance")  # type: ignore
+    plt.title("Total probing cache construction time per instance")  # type: ignore
+    plt.tight_layout()
+    plt.savefig(output_dir / "total_runtime_per_instance.png", dpi=200)  # type: ignore
     plt.close()
+
+    pivot = summary.pivot(
+        index="instance", columns="implementation", values="duration_ms"
+    )
+    if {"GPU naive", "GPU advanced"}.issubset(pivot.columns):
+        speedup = (
+            pivot.assign(speedup=pivot["GPU naive"] / pivot["GPU advanced"])
+            .reset_index()
+            .sort_values("speedup", ascending=False)
+        )
+
+        plt.figure(figsize=(14, 6))  # type: ignore
+        sns.barplot(data=speedup, x="instance", y="speedup")  # type: ignore
+        plt.axhline(1.0, color="black", linewidth=1)  # type: ignore
+        plt.xticks(rotation=70, ha="right")  # type: ignore
+        plt.ylabel("Speedup: naive / advanced")  # type: ignore
+        plt.xlabel("MIPLIB2017 instance")  # type: ignore
+        plt.title("Advanced GPU probing speedup per instance")  # type: ignore
+        plt.tight_layout()
+        plt.savefig(output_dir / "speedup_per_instance.png", dpi=200)  # type: ignore
+        plt.close()
 
 
 def main():

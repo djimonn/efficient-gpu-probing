@@ -152,11 +152,15 @@ class NaivGPUProbingCache(ProbingCache):
         rhs = np.ascontiguousarray(self.problem.b, dtype=np.float64)
         # add additional constraint
         add_constraint_idx, add_constraint_interval = additional_constraint
-        initial_lb = np.ascontiguousarray(self.problem.original_lb, dtype=np.float64).copy()
+        initial_lb = np.ascontiguousarray(
+            self.problem.original_lb, dtype=np.float64
+        ).copy()
         initial_lb[add_constraint_idx] = max(
             add_constraint_interval.lower_bound, initial_lb[add_constraint_idx]
         )
-        initial_ub = np.ascontiguousarray(self.problem.original_ub, dtype=np.float64).copy()
+        initial_ub = np.ascontiguousarray(
+            self.problem.original_ub, dtype=np.float64
+        ).copy()
         initial_ub[add_constraint_idx] = min(
             add_constraint_interval.upper_bound, initial_ub[add_constraint_idx]
         )
@@ -250,6 +254,7 @@ class NaivGPUProbingCache(ProbingCache):
             _naive_cache_entry = self.build_cache_entry_by_host_scan(propagation_result)
             self.probe_results[(var_index, probe_interval)] = _naive_cache_entry
         return ProbeMetrics(
+            problem=self.problem,
             duration_ms=(time.perf_counter() - start) * 1000,
             num_changed_bounds=(
                 len(propagation_result.lb) if propagation_result.lb is not None else 0

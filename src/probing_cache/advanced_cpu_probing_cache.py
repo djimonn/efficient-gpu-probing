@@ -90,6 +90,7 @@ class AdvancedCPUProbingCache(ProbingCache):
 
             self.probe_results[(var_index, probe_interval)] = advanced_cache_entry
         return ProbeMetrics(
+            problem=self.problem,
             duration_ms=(time.perf_counter() - start) * 1000,
             full_copy=False,
             num_changed_bounds=len(changed_indices),  # type: ignore

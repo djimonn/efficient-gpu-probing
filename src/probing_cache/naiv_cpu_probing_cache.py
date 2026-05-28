@@ -65,6 +65,7 @@ class NaivCPUProbingCache(ProbingCache):
             self.probe_results[(var_index, probe_interval)] = naive_cache_entry
 
         return ProbeMetrics(
+            problem=self.problem,
             duration_ms=(time.perf_counter() - start) * 1000,
             full_copy=True,
             num_changed_bounds=(len(naive_cache_entry.var_bounds)),  # type: ignore
