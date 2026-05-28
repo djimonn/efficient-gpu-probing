@@ -1,11 +1,14 @@
 from milp_problem import MILPProblem
 from probe_metrics import ProbeMetrics
+from probing_cache.advanced_cpu_probing_cache import AdvancedCPUProbingCache
 from probing_cache.advanced_gpu_probing_cache import AdvancedGPUProbingCache
+from probing_cache.naiv_cpu_probing_cache import NaivCPUProbingCache
 from probing_cache.naiv_gpu_probing_cache import NaivGPUProbingCache
 from pathlib import Path
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+from numba import cuda  # type: ignore
 
 
 def plot_stuff(metrics: list[ProbeMetrics]) -> None:
@@ -74,18 +77,27 @@ def plot_stuff(metrics: list[ProbeMetrics]) -> None:
         plt.title("Advanced GPU probing speedup per instance")  # type: ignore
         plt.tight_layout()
         plt.savefig(output_dir / "speedup_per_instance.png", dpi=200)  # type: ignore
-        plt.close()
 
 
 def main():
     metrics: list[ProbeMetrics] = []
-    directory = Path("data")
+    directory = (
+        Path("data/MIPLIB2017_benchmark_set") if cuda.is_available() else Path("data")
+    )
     for file in directory.iterdir():
         if not file.is_file():
             continue
         problem = MILPProblem.from_mps_file(name=file.stem, path=str(file))
-        probing_cache_naiv = NaivGPUProbingCache(problem)
-        probing_cache_advanced = AdvancedGPUProbingCache(problem)
+        probing_cache_naiv = (
+            NaivGPUProbingCache(problem)
+            if cuda.is_available()
+            else NaivCPUProbingCache(problem)
+        )
+        probing_cache_advanced = (
+            AdvancedGPUProbingCache(problem)
+            if cuda.is_available()
+            else AdvancedCPUProbingCache(problem)
+        )
         for var_index in range(problem.num_variables):
             if problem.is_integer[var_index]:
                 metrics.append(probing_cache_naiv.probe(var_index))
