@@ -13,15 +13,50 @@ import os
 from numba import cuda  # type: ignore
 
 
-def plot_stuff(metrics: list[ProbeMetrics]) -> None:
-    output_dir = Path("output")
-    output_dir.mkdir(exist_ok=True)
+def get_run_id() -> str:
     slurm_job_id = os.environ.get("SLURM_JOB_ID")
-    run_id = (
+    return (
         f"slurm_{slurm_job_id}"
         if slurm_job_id is not None
         else datetime.now().strftime("%Y%m%d_%H%M%S")
     )
+
+
+def metrics_to_dataframe(metrics: list[ProbeMetrics]) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "instance": [metric.problem.name for metric in metrics],
+            "implementation": [
+                "GPU naive" if metric.full_copy else "GPU advanced"
+                for metric in metrics
+            ],
+            "duration_ms": [metric.duration_ms for metric in metrics],
+            "num_changed_bounds": [metric.num_changed_bounds for metric in metrics],
+            "full_copy": [metric.full_copy for metric in metrics],
+        }
+    )
+
+
+def write_instance_metrics(metrics: list[ProbeMetrics], run_id: str) -> None:
+    if not metrics:
+        return
+
+    output_dir = Path("output") / "metrics" / run_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    instance_name = metrics[0].problem.name
+    metrics_to_dataframe(metrics).to_csv(output_dir / f"{instance_name}.txt", index=False)
+
+
+def write_instance_error(instance_name: str, run_id: str, error: Exception) -> None:
+    output_dir = Path("output") / "metrics" / run_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with (output_dir / f"{instance_name}.error.txt").open("w") as file:
+        file.write(f"{type(error).__name__}: {error}\n")
+
+
+def plot_stuff(metrics: list[ProbeMetrics], run_id: str) -> None:
+    output_dir = Path("output")
+    output_dir.mkdir(exist_ok=True)
 
     df = pd.DataFrame(
         {
@@ -88,6 +123,7 @@ def plot_stuff(metrics: list[ProbeMetrics]) -> None:
 
 
 def main():
+    run_id = get_run_id()
     metrics: list[ProbeMetrics] = []
     directory = (
         Path("data/MIPLIB2017_benchmark_set") if cuda.is_available() else Path("data")
@@ -95,22 +131,34 @@ def main():
     for file in directory.iterdir():
         if not file.is_file():
             continue
-        problem = MILPProblem.from_mps_file(name=file.stem, path=str(file))
-        probing_cache_naiv = (
-            NaivGPUProbingCache(problem)
-            if cuda.is_available()
-            else NaivCPUProbingCache(problem)
-        )
-        probing_cache_advanced = (
-            AdvancedGPUProbingCache(problem)
-            if cuda.is_available()
-            else AdvancedCPUProbingCache(problem)
-        )
-        for var_index in range(problem.num_variables):
-            if problem.is_integer[var_index]:
-                metrics.append(probing_cache_naiv.probe(var_index))
-                metrics.append(probing_cache_advanced.probe(var_index))
-    plot_stuff(metrics)
+
+        instance_metrics: list[ProbeMetrics] = []
+        try:
+            problem = MILPProblem.from_mps_file(name=file.stem, path=str(file))
+            probing_cache_naiv = (
+                NaivGPUProbingCache(problem)
+                if cuda.is_available()
+                else NaivCPUProbingCache(problem)
+            )
+            probing_cache_advanced = (
+                AdvancedGPUProbingCache(problem)
+                if cuda.is_available()
+                else AdvancedCPUProbingCache(problem)
+            )
+            for var_index in range(problem.num_variables):
+                if problem.is_integer[var_index]:
+                    instance_metrics.append(probing_cache_naiv.probe(var_index))
+                    instance_metrics.append(probing_cache_advanced.probe(var_index))
+        except Exception as error:
+            write_instance_metrics(instance_metrics, run_id)
+            write_instance_error(file.stem, run_id, error)
+            print(f"Skipping {file.name} after error: {error}")
+            continue
+
+        write_instance_metrics(instance_metrics, run_id)
+        metrics.extend(instance_metrics)
+
+    plot_stuff(metrics, run_id)
 
 
 if __name__ == "__main__":
