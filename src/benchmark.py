@@ -10,6 +10,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from datetime import datetime
 import os
+import sys
 from numba import cuda  # type: ignore
 
 
@@ -122,33 +123,44 @@ def plot_stuff(metrics: list[ProbeMetrics], run_id: str) -> None:
         plt.savefig(output_dir / f"speedup_per_instance_{run_id}.png", dpi=200)  # type: ignore
 
 
+def benchmark_instance(file: Path) -> list[ProbeMetrics]:
+    instance_metrics: list[ProbeMetrics] = []
+    problem = MILPProblem.from_mps_file(name=file.stem, path=str(file))
+    probing_cache_naiv = (
+        NaivGPUProbingCache(problem) if cuda.is_available() else NaivCPUProbingCache(problem)
+    )
+    probing_cache_advanced = (
+        AdvancedGPUProbingCache(problem)
+        if cuda.is_available()
+        else AdvancedCPUProbingCache(problem)
+    )
+    for var_index in range(problem.num_variables):
+        if problem.is_integer[var_index]:
+            instance_metrics.append(probing_cache_naiv.probe(var_index))
+            instance_metrics.append(probing_cache_advanced.probe(var_index))
+    return instance_metrics
+
+
 def main():
     run_id = get_run_id()
     metrics: list[ProbeMetrics] = []
-    directory = (
-        Path("data/MIPLIB2017_benchmark_set") if cuda.is_available() else Path("data")
-    )
-    for file in directory.iterdir():
+    if len(sys.argv) > 1:
+        files = [Path(sys.argv[1])]
+    else:
+        directory = (
+            Path("data/MIPLIB2017_benchmark_set")
+            if cuda.is_available()
+            else Path("data")
+        )
+        files = sorted(directory.iterdir())
+
+    for file in files:
         if not file.is_file():
             continue
 
         instance_metrics: list[ProbeMetrics] = []
         try:
-            problem = MILPProblem.from_mps_file(name=file.stem, path=str(file))
-            probing_cache_naiv = (
-                NaivGPUProbingCache(problem)
-                if cuda.is_available()
-                else NaivCPUProbingCache(problem)
-            )
-            probing_cache_advanced = (
-                AdvancedGPUProbingCache(problem)
-                if cuda.is_available()
-                else AdvancedCPUProbingCache(problem)
-            )
-            for var_index in range(problem.num_variables):
-                if problem.is_integer[var_index]:
-                    instance_metrics.append(probing_cache_naiv.probe(var_index))
-                    instance_metrics.append(probing_cache_advanced.probe(var_index))
+            instance_metrics = benchmark_instance(file)
         except Exception as error:
             write_instance_metrics(instance_metrics)
             write_instance_error(file.stem, error)
