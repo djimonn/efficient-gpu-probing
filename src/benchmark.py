@@ -37,18 +37,18 @@ def metrics_to_dataframe(metrics: list[ProbeMetrics]) -> pd.DataFrame:
     )
 
 
-def write_instance_metrics(metrics: list[ProbeMetrics], run_id: str) -> None:
+def write_instance_metrics(metrics: list[ProbeMetrics]) -> None:
     if not metrics:
         return
 
-    output_dir = Path("output") / "metrics" / run_id
+    output_dir = Path("output") / "metrics"
     output_dir.mkdir(parents=True, exist_ok=True)
     instance_name = metrics[0].problem.name
     metrics_to_dataframe(metrics).to_csv(output_dir / f"{instance_name}.txt", index=False)
 
 
-def write_instance_error(instance_name: str, run_id: str, error: Exception) -> None:
-    output_dir = Path("output") / "metrics" / run_id
+def write_instance_error(instance_name: str, error: Exception) -> None:
+    output_dir = Path("output") / "metrics"
     output_dir.mkdir(parents=True, exist_ok=True)
     with (output_dir / f"{instance_name}.error.txt").open("w") as file:
         file.write(f"{type(error).__name__}: {error}\n")
@@ -150,12 +150,12 @@ def main():
                     instance_metrics.append(probing_cache_naiv.probe(var_index))
                     instance_metrics.append(probing_cache_advanced.probe(var_index))
         except Exception as error:
-            write_instance_metrics(instance_metrics, run_id)
-            write_instance_error(file.stem, run_id, error)
+            write_instance_metrics(instance_metrics)
+            write_instance_error(file.stem, error)
             print(f"Skipping {file.name} after error: {error}")
             continue
 
-        write_instance_metrics(instance_metrics, run_id)
+        write_instance_metrics(instance_metrics)
         metrics.extend(instance_metrics)
 
     plot_stuff(metrics, run_id)
