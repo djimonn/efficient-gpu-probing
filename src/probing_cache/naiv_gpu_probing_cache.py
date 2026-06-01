@@ -254,7 +254,8 @@ class NaivGPUProbingCache(ProbingCache):
             _naive_cache_entry = self.build_cache_entry_by_host_scan(propagation_result)
             self.probe_results[(var_index, probe_interval)] = _naive_cache_entry
         return ProbeMetrics(
-            problem=self.problem,
+            instance_name=self.problem.name,
+            num_vars=self.problem.num_variables,
             duration_ms=(time.perf_counter() - start) * 1000,
             num_changed_bounds=(
                 len(propagation_result.lb) if propagation_result.lb is not None else 0

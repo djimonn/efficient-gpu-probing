@@ -6,8 +6,6 @@ from probing_cache.naiv_cpu_probing_cache import NaivCPUProbingCache
 from probing_cache.naiv_gpu_probing_cache import NaivGPUProbingCache
 from pathlib import Path
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
 from datetime import datetime
 import os
 import sys
@@ -26,11 +24,8 @@ def get_run_id() -> str:
 def metrics_to_dataframe(metrics: list[ProbeMetrics]) -> pd.DataFrame:
     return pd.DataFrame(
         {
-            "instance": [metric.problem.name for metric in metrics],
-            "implementation": [
-                "GPU naive" if metric.full_copy else "GPU advanced"
-                for metric in metrics
-            ],
+            "instance_name": [metric.instance_name for metric in metrics],
+            "num_vars": [metric.num_vars for metric in metrics],
             "duration_ms": [metric.duration_ms for metric in metrics],
             "num_changed_bounds": [metric.num_changed_bounds for metric in metrics],
             "full_copy": [metric.full_copy for metric in metrics],
@@ -44,8 +39,10 @@ def write_instance_metrics(metrics: list[ProbeMetrics]) -> None:
 
     output_dir = Path("output") / "metrics"
     output_dir.mkdir(parents=True, exist_ok=True)
-    instance_name = metrics[0].problem.name
-    metrics_to_dataframe(metrics).to_csv(output_dir / f"{instance_name}.txt", index=False)
+    instance_name = metrics[0].instance_name
+    metrics_to_dataframe(metrics).to_csv(
+        output_dir / f"{instance_name}.txt", index=False
+    )
 
 
 def write_instance_error(instance_name: str, error: Exception) -> None:
@@ -55,79 +52,13 @@ def write_instance_error(instance_name: str, error: Exception) -> None:
         file.write(f"{type(error).__name__}: {error}\n")
 
 
-def plot_stuff(metrics: list[ProbeMetrics], run_id: str) -> None:
-    output_dir = Path("output")
-    output_dir.mkdir(exist_ok=True)
-
-    df = pd.DataFrame(
-        {
-            "instance": [metric.problem.name for metric in metrics],
-            "implementation": [
-                "GPU naive" if metric.full_copy else "GPU advanced"
-                for metric in metrics
-            ],
-            "duration_ms": [metric.duration_ms for metric in metrics],
-            "num_changed_bounds": [metric.num_changed_bounds for metric in metrics],
-        }
-    )
-
-    if df.empty:
-        print("No metrics collected; skipping plots.")
-        return
-
-    # total runtime per instance + implementation
-    summary = df.groupby(["instance", "implementation"], as_index=False)[
-        "duration_ms"
-    ].sum()
-
-    # sort by naive runtime
-    order = summary[summary["implementation"] == "GPU naive"].sort_values(
-        "duration_ms", ascending=False
-    )["instance"]
-
-    plt.figure(figsize=(14, 6))  # type: ignore
-    sns.barplot(
-        data=summary,  # type: ignore
-        x="instance",
-        y="duration_ms",
-        hue="implementation",
-        order=order,
-    )
-    plt.yscale("log")  # type: ignore
-    plt.xticks(rotation=70, ha="right")  # type: ignore
-    plt.ylabel("Total probing cache construction time [ms]")  # type: ignore
-    plt.xlabel("MIPLIB2017 instance")  # type: ignore
-    plt.title("Total probing cache construction time per instance")  # type: ignore
-    plt.tight_layout()
-    plt.savefig(output_dir / f"total_runtime_per_instance_{run_id}.png", dpi=200)  # type: ignore
-    plt.close()
-
-    pivot = summary.pivot(
-        index="instance", columns="implementation", values="duration_ms"
-    )
-    if {"GPU naive", "GPU advanced"}.issubset(pivot.columns):
-        speedup = (
-            pivot.assign(speedup=pivot["GPU naive"] / pivot["GPU advanced"])
-            .reset_index()
-            .sort_values("speedup", ascending=False)
-        )
-
-        plt.figure(figsize=(14, 6))  # type: ignore
-        sns.barplot(data=speedup, x="instance", y="speedup")  # type: ignore
-        plt.axhline(1.0, color="black", linewidth=1)  # type: ignore
-        plt.xticks(rotation=70, ha="right")  # type: ignore
-        plt.ylabel("Speedup: naive / advanced")  # type: ignore
-        plt.xlabel("MIPLIB2017 instance")  # type: ignore
-        plt.title("Advanced GPU probing speedup per instance")  # type: ignore
-        plt.tight_layout()
-        plt.savefig(output_dir / f"speedup_per_instance_{run_id}.png", dpi=200)  # type: ignore
-
-
 def benchmark_instance(file: Path) -> list[ProbeMetrics]:
     instance_metrics: list[ProbeMetrics] = []
     problem = MILPProblem.from_mps_file(name=file.stem, path=str(file))
     probing_cache_naiv = (
-        NaivGPUProbingCache(problem) if cuda.is_available() else NaivCPUProbingCache(problem)
+        NaivGPUProbingCache(problem)
+        if cuda.is_available()
+        else NaivCPUProbingCache(problem)
     )
     probing_cache_advanced = (
         AdvancedGPUProbingCache(problem)
@@ -142,7 +73,7 @@ def benchmark_instance(file: Path) -> list[ProbeMetrics]:
 
 
 def main():
-    run_id = get_run_id()
+    _run_id = get_run_id()
     metrics: list[ProbeMetrics] = []
     if len(sys.argv) > 1:
         files = [Path(sys.argv[1])]
@@ -170,7 +101,7 @@ def main():
         write_instance_metrics(instance_metrics)
         metrics.extend(instance_metrics)
 
-    plot_stuff(metrics, run_id)
+    # plot_stuff(metrics, run_id)
 
 
 if __name__ == "__main__":
