@@ -4,12 +4,12 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=16:00:00
-#SBATCH --array=0-999
+#SBATCH --array=0-250%20
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 
 source .venv/bin/activate
-export CUDA_HOME=/afs/math/software/nvidia/cuda/13.0.1
+export CUDA_HOME=/afs/math/software/nvidia/cuda/12.6.3
 
 DATA_DIR="data/MIPLIB2017_benchmark_set"
 
