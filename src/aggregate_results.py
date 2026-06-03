@@ -57,15 +57,15 @@ def parse_results() -> list[ProbeMetrics]:
 
 def aggregate_probes(
     probes: list[ProbeMetrics],
-) -> dict[str, tuple[ProbeMetrics, ProbeMetrics]]:
-    instance_metrics: dict[str, tuple[ProbeMetrics, ProbeMetrics]] = {}
+) -> dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]]:
+    instance_metrics: dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]] = {}
     for probe in probes:
         if probe.instance_name not in instance_metrics:
-            instance_metrics[probe.instance_name] = (None, None)  # type: ignore
+            instance_metrics[probe.instance_name] = ([], [])
         if probe.full_copy:
-            instance_metrics[probe.instance_name] = (probe, instance_metrics[probe.instance_name][1])  # type: ignore
+            instance_metrics[probe.instance_name][0].append(probe)
         else:
-            instance_metrics[probe.instance_name] = (instance_metrics[probe.instance_name][0], probe)  # type: ignore
+            instance_metrics[probe.instance_name][1].append(probe)
     return instance_metrics
 
 def scatter_and_regression(naiv_x, naiv_y, advanced_x, advanced_y, x_label) -> None:

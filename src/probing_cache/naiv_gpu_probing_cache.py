@@ -134,7 +134,7 @@ class NaivGPUProbingCache(ProbingCache):
 
     def propagate_until_fixpoint(
         self, additional_constraint: Tuple[VarIndex, BoundInterval]
-    ) -> Any:
+    ) -> PropagationResult:
         (
             check_row_infeasibility_kernel,
             propagate_variables_kernel,
