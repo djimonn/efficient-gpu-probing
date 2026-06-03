@@ -14,20 +14,20 @@ from type_aliases import ImplementationType
 
 def parse_file(content: str) -> list[ProbeMetrics]:
     # The content is expected to be a single line CSV with the following columns:
-    # instance_name,num_vars,num_integer_vars, var_index, implementation, duration_ms,num_changed_bounds,result_copied_bytes
+    # instance_name,num_vars,num_integer_vars,var_index,probe_lower_bound,probe_upper_bound,is_feasible,implementation,duration_ms,num_changed_bounds,result_copied_bytes
     # The first line is the header, so we skip it.
     lines = content.strip().splitlines()
     if len(lines) < 2:
         return []
     header = lines[0].split(",")
-    if len(header) != 8:
+    if len(header) != 11:
         raise ValueError("File header does not have the expected number of columns.")
     probe_metrics: list[ProbeMetrics] = []
     for line in lines[1:]:
         if not line.strip():
             continue
         values = line.split(",")
-        if len(values) != 8:
+        if len(values) != 11:
             raise ValueError(
                 f"Line does not have the expected number of columns: {line}"
             )
@@ -43,10 +43,13 @@ def parse_file(content: str) -> list[ProbeMetrics]:
                 num_vars=int(values[1]),
                 num_integer_vars=int(values[2]),
                 var_index=int(values[3]),
-                implementation=parse_implementation(values[4]),
-                duration_ms=float(values[5]),
-                num_changed_bounds=int(values[6]),
-                result_copied_bytes=int(values[7]),
+                probe_lower_bound=float(values[4]),
+                probe_upper_bound=float(values[5]),
+                is_feasible=values[6].lower() == "true",
+                implementation=parse_implementation(values[7]),
+                duration_ms=float(values[8]),
+                num_changed_bounds=int(values[9]),
+                result_copied_bytes=int(values[10]),
             )
         )
     return probe_metrics
@@ -105,9 +108,9 @@ def scatter_and_regression(naiv_x, naiv_y, advanced_x, advanced_y, x_label) -> N
 
 def main():
     all_probes: list[ProbeMetrics] = parse_results()
-    instance_metrics: dict[str, tuple[ProbeMetrics, ProbeMetrics]] = aggregate_probes(
-        all_probes
-    )
+    instance_metrics: dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]] = (
+        aggregate_probes(all_probes)
+    )  # instance : ([naiv_probes], [advanced_probes])
 
     if len([probe for probe in all_probes if probe.implementation == "naiv"]) == 0:
         raise ValueError("No GPU naive probes found in the data.")
@@ -115,7 +118,9 @@ def main():
         raise ValueError("No GPU advanced probes found in the data.")
 
     # Avg times
-    total_time_naiv = sum(probe.duration_ms for probe in all_probes if probe.full_copy)
+    total_time_naiv = sum(
+        probe.duration_ms for probe in all_probes if probe.implementation == "naiv"
+    )
     total_time_advanced = sum(
         probe.duration_ms for probe in all_probes if probe.implementation == "advanced"
     )
@@ -128,108 +133,63 @@ def main():
     print(f"Average time for GPU naive: {avg_time_naiv:.2f} ms")
     print(f"Average time for GPU advanced: {avg_time_advanced:.2f} ms")
 
-    # naiv/advanced schneller in % Fälle
-    num_naiv_faster = sum(
+    # naiv/advanced schneller in % Instanzen
+    instance_avg_times: dict[str, tuple[float, float]] = {}
+    for instance_name, (naiv_probes, advanced_probes) in instance_metrics.items():
+        avg_naiv = sum(probe.duration_ms for probe in naiv_probes) / len(naiv_probes)
+        avg_advanced = sum(probe.duration_ms for probe in advanced_probes) / len(
+            advanced_probes
+        )
+        instance_avg_times[instance_name] = (avg_naiv, avg_advanced)
+    naiv_faster_count = sum(
         1
-        for (naiv_probe, advanced_probe) in instance_metrics.values()
-        if naiv_probe.duration_ms <= advanced_probe.duration_ms
+        for avg_naiv, avg_advanced in instance_avg_times.values()
+        if avg_naiv < avg_advanced
     )
-    num_advanced_faster = len(instance_metrics) - num_naiv_faster
+    advanced_faster_count = sum(
+        1
+        for avg_naiv, avg_advanced in instance_avg_times.values()
+        if avg_advanced < avg_naiv
+    )
+    total_instances = len(instance_avg_times)
     print(
-        f"GPU naive faster in {num_naiv_faster / len(instance_metrics) * 100:.2f}% of cases"
+        f"GPU naive faster in {naiv_faster_count} out of {total_instances} instances ({(naiv_faster_count/total_instances)*100:.2f}%)"
     )
     print(
-        f"GPU advanced faster in {num_advanced_faster / len(instance_metrics) * 100:.2f}% of cases"
+        f"GPU advanced faster in {advanced_faster_count} out of {total_instances} instances ({(advanced_faster_count/total_instances)*100:.2f}%)"
     )
 
-    # Korrelation Anzahl Bounds Changes und Laufzeit vergleich
-    instances_sorted_by_bound_changes = sorted(
-        instance_metrics.items(),
-        key=lambda x: x[1][0].num_changed_bounds,
-    )
+    # Korrelation result_copied_bytes und Laufzeit
     naiv_x = np.array(
         [
-            naiv_probe.num_changed_bounds
-            for _, (naiv_probe, _) in instances_sorted_by_bound_changes
+            naiv_probe.result_copied_bytes
+            for naiv_probe in all_probes
+            if naiv_probe.implementation == "naiv"
         ]
     )
     advanced_x = np.array(
         [
-            advanced_probe.num_changed_bounds
-            for _, (_, advanced_probe) in instances_sorted_by_bound_changes
+            advanced_probe.result_copied_bytes
+            for advanced_probe in all_probes
+            if advanced_probe.implementation == "advanced"
         ]
     )
     naiv_y = np.array(
         [
             naiv_probe.duration_ms
-            for _, (naiv_probe, _) in instances_sorted_by_bound_changes
+            for naiv_probe in all_probes
+            if naiv_probe.implementation == "naiv"
         ]
     )
     advanced_y = np.array(
         [
             advanced_probe.duration_ms
-            for _, (_, advanced_probe) in instances_sorted_by_bound_changes
+            for advanced_probe in all_probes
+            if advanced_probe.implementation == "advanced"
         ]
     )
     scatter_and_regression(
-        naiv_x, naiv_y, advanced_x, advanced_y, "Number of bound changes"
-    )
-
-    # Korrelation Anzahl Variablen und Laufzeit vergleich
-    instances_sorted_by_num_vars = sorted(
-        instance_metrics.items(),
-        key=lambda x: x[1][0].num_vars,
-    )
-    naiv_x = np.array(
-        [naiv_probe.num_vars for _, (naiv_probe, _) in instances_sorted_by_num_vars]
-    )
-    advanced_x = np.array(
-        [
-            advanced_probe.num_vars
-            for _, (_, advanced_probe) in instances_sorted_by_num_vars
-        ]
-    )
-    naiv_y = np.array(
-        [naiv_probe.duration_ms for _, (naiv_probe, _) in instances_sorted_by_num_vars]
-    )
-    advanced_y = np.array(
-        [
-            advanced_probe.duration_ms
-            for _, (_, advanced_probe) in instances_sorted_by_num_vars
-        ]
-    )
-    scatter_and_regression(
-        naiv_x, naiv_y, advanced_x, advanced_y, "Number of variables"
-    )
-
-    # Korrelation num_bounds_change/num_vars und Laufzeit vergleich
-    instances_sorted_by_num_vars = sorted(
-        instance_metrics.items(),
-        key=lambda x: x[1][0].num_vars,
-    )
-    naiv_x = np.array(
-        [
-            naiv_probe.num_changed_bounds / naiv_probe.num_vars
-            for _, (naiv_probe, _) in instances_sorted_by_num_vars
-        ]
-    )
-    advanced_x = np.array(
-        [
-            advanced_probe.num_changed_bounds / advanced_probe.num_vars
-            for _, (_, advanced_probe) in instances_sorted_by_num_vars
-        ]
-    )
-    naiv_y = np.array(
-        [naiv_probe.duration_ms for _, (naiv_probe, _) in instances_sorted_by_num_vars]
-    )
-    advanced_y = np.array(
-        [
-            advanced_probe.duration_ms
-            for _, (_, advanced_probe) in instances_sorted_by_num_vars
-        ]
-    )
-    scatter_and_regression(
-        naiv_x, naiv_y, advanced_x, advanced_y, "Number of bound changes per variable"
+        naiv_x, naiv_y, advanced_x, advanced_y, "Result copied bytes"
     )
 
 
