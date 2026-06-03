@@ -26,9 +26,15 @@ def metrics_to_dataframe(metrics: list[ProbeMetrics]) -> pd.DataFrame:
         {
             "instance_name": [metric.instance_name for metric in metrics],
             "num_vars": [metric.num_vars for metric in metrics],
+            "num_integer_vars": [metric.num_integer_vars for metric in metrics],
+            "var_index": [metric.var_index for metric in metrics],
+            "probe_lower_bound": [metric.probe_lower_bound for metric in metrics],
+            "probe_upper_bound": [metric.probe_upper_bound for metric in metrics],
+            "is_feasible": [metric.is_feasible for metric in metrics],
+            "implementation": [metric.implementation for metric in metrics],
             "duration_ms": [metric.duration_ms for metric in metrics],
             "num_changed_bounds": [metric.num_changed_bounds for metric in metrics],
-            "full_copy": [metric.full_copy for metric in metrics],
+            "result_copied_bytes": [metric.result_copied_bytes for metric in metrics],
         }
     )
 
@@ -67,8 +73,8 @@ def benchmark_instance(file: Path) -> list[ProbeMetrics]:
     )
     for var_index in range(problem.num_variables):
         if problem.is_integer[var_index]:
-            instance_metrics.append(probing_cache_naiv.probe(var_index))
-            instance_metrics.append(probing_cache_advanced.probe(var_index))
+            instance_metrics.extend(probing_cache_naiv.probe(var_index))
+            instance_metrics.extend(probing_cache_advanced.probe(var_index))
     return instance_metrics
 
 

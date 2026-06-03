@@ -209,7 +209,7 @@ class NaivGPUProbingCache(ProbingCache):
             )
             cuda.synchronize()
             if int(d_infeasible.copy_to_host()[0]) != 0:
-                return PropagationResult(False)
+                return PropagationResult(False, 0)
 
             propagate_variables_kernel[var_blocks, threads_per_block](  # type: ignore
                 d_csr_indptr,
@@ -230,35 +230,45 @@ class NaivGPUProbingCache(ProbingCache):
             cuda.synchronize()
 
             if int(d_infeasible.copy_to_host()[0]) != 0:
-                return PropagationResult(is_feasible=False)
+                return PropagationResult(is_feasible=False, result_copied_bytes=0)
 
             changed = int(d_changed.copy_to_host()[0]) != 0
             d_lb, d_lb_next = d_lb_next, d_lb
             d_ub, d_ub_next = d_ub_next, d_ub
             if not changed:
-                return PropagationResult(True, d_lb.copy_to_host(), d_ub.copy_to_host())  # type: ignore
+                d_lb_host = d_lb.copy_to_host()
+                d_ub_host = d_ub.copy_to_host()
+                return PropagationResult(is_feasible=True, result_copied_bytes=d_lb_host.nbytes + d_ub_host.nbytes, lb=d_lb_host, ub=d_ub_host)  # type: ignore
 
         raise RuntimeError(
             f"GPU propagation did not converge after {max_iterations} iterations."
         )
 
-    def probe(self, var_index: VarIndex) -> ProbeMetrics:
-        start = time.perf_counter()
+    def probe(self, var_index: VarIndex) -> list[ProbeMetrics]:
         default_interval = BoundInterval(
             self.problem.original_lb[var_index], self.problem.original_ub[var_index]
         )
+        metrics: list[ProbeMetrics] = []
         for probe_interval in self.split_interval(default_interval):
+            start = time.perf_counter()
             propagation_result = self.propagate_until_fixpoint(
                 (var_index, probe_interval)
             )
             _naive_cache_entry = self.build_cache_entry_by_host_scan(propagation_result)
             self.probe_results[(var_index, probe_interval)] = _naive_cache_entry
-        return ProbeMetrics(
-            instance_name=self.problem.name,
-            num_vars=self.problem.num_variables,
-            duration_ms=(time.perf_counter() - start) * 1000,
-            num_changed_bounds=(
-                len(propagation_result.lb) if propagation_result.lb is not None else 0
-            ),
-            full_copy=True,
-        )
+            metrics.append(
+                ProbeMetrics(
+                    instance_name=self.problem.name,
+                    num_vars=self.problem.num_variables,
+                    num_integer_vars=self.problem.num_integer_vars,
+                    var_index=var_index,
+                    probe_lower_bound=probe_interval.lower_bound,
+                    probe_upper_bound=probe_interval.upper_bound,
+                    is_feasible=propagation_result.is_feasible,
+                    implementation="naiv",
+                    duration_ms=(time.perf_counter() - start) * 1000,
+                    num_changed_bounds=len(_naive_cache_entry.var_bounds),
+                    result_copied_bytes=propagation_result.result_copied_bytes,
+                )
+            )
+        return metrics

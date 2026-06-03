@@ -32,6 +32,10 @@ class MILPProblem:
         self.original_ub.setflags(write=False)
 
     @property
+    def num_integer_vars(self) -> int:
+        return sum(self.is_integer)
+
+    @property
     def num_constraints(self) -> int:
         shape = cast(tuple[int, int], self.A.shape)
         return shape[0]

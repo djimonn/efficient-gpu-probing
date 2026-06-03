@@ -21,7 +21,7 @@ class ProbingCache(ABC):
         self.probe_results: dict[Tuple[VarIndex, BoundInterval], CacheEntry] = {}
 
     @abstractmethod
-    def probe(self, var_index: VarIndex) -> ProbeMetrics:
+    def probe(self, var_index: VarIndex) -> list[ProbeMetrics]:
         pass
 
     @abstractmethod

@@ -68,16 +68,13 @@ class AdvancedCPUProbingCache(ProbingCache):
         changed_ub = state.ub[changed_indices]
         return True, changed_indices, changed_lb, changed_ub
 
-    def probe(self, var_index: int) -> ProbeMetrics:
-        start = time.perf_counter()
+    def probe(self, var_index: int) -> list[ProbeMetrics]:
         default_interval = BoundInterval(
             self.problem.original_lb[var_index], self.problem.original_ub[var_index]
         )
+        metrics: list[ProbeMetrics] = []
         for probe_interval in self.split_interval(default_interval):
-            # Basic probing techniques (see "Preprocessing and Probing Techniques for Mixed Integer Programming Problems" by M.W.P. Savelsbergh)
-            # naive approach: scan all bounds and check if any bound has changed/improved.
-
-            # advanced approach: only return the bounds that have changed/improved
+            start = time.perf_counter()
             (
                 is_feasible,
                 changed_indices,
@@ -89,10 +86,19 @@ class AdvancedCPUProbingCache(ProbingCache):
             )
 
             self.probe_results[(var_index, probe_interval)] = advanced_cache_entry
-        return ProbeMetrics(
-            instance_name=self.problem.name,
-            num_vars=self.problem.num_variables,
-            duration_ms=(time.perf_counter() - start) * 1000,
-            full_copy=False,
-            num_changed_bounds=len(changed_indices),  # type: ignore
-        )
+            metrics.append(
+                ProbeMetrics(
+                    instance_name=self.problem.name,
+                    num_vars=self.problem.num_variables,
+                    num_integer_vars=self.problem.num_integer_vars,
+                    var_index=var_index,
+                    probe_lower_bound=probe_interval.lower_bound,
+                    probe_upper_bound=probe_interval.upper_bound,
+                    is_feasible=is_feasible,
+                    implementation="advanced",
+                    duration_ms=(time.perf_counter() - start) * 1000,
+                    num_changed_bounds=len(changed_indices),  # type: ignore
+                    result_copied_bytes=0,  # this is a CPU implementation, so we don't have GPU memory copies
+                )
+            )
+        return metrics

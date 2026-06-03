@@ -5,6 +5,7 @@ from typing import Any, Callable, Tuple
 import numpy as np
 
 from bound_interval import BoundInterval
+from compacted_propagation_result import CompactedPropagationResult
 from probe_metrics import ProbeMetrics
 from probing_cache.naiv_gpu_probing_cache import get_naive_gpu_kernels
 from probing_cache.probing_cache import ProbingCache
@@ -130,7 +131,7 @@ class AdvancedGPUProbingCache(ProbingCache):
 
     def propagate_until_fixpoint(
         self, additional_constraint: Tuple[VarIndex, BoundInterval]
-    ) -> Any:
+    ) -> CompactedPropagationResult:
         (
             check_row_infeasibility_kernel,
             propagate_variables_with_change_tracking_kernel,
@@ -209,11 +210,12 @@ class AdvancedGPUProbingCache(ProbingCache):
             )
             cuda.synchronize()
             if int(d_infeasible.copy_to_host()[0]) != 0:
-                return (
-                    False,
-                    np.empty(0, dtype=np.int64),
-                    np.empty(0, dtype=np.float64),
-                    np.empty(0, dtype=np.float64),
+                return CompactedPropagationResult(
+                    is_feasible=False,
+                    changed_indices=np.empty(0, dtype=np.int64),
+                    changed_lb=np.empty(0, dtype=np.float64),
+                    changed_ub=np.empty(0, dtype=np.float64),
+                    result_copied_bytes=0,
                 )
 
             propagate_variables_with_change_tracking_kernel[var_blocks, threads_per_block](  # type: ignore
@@ -238,11 +240,12 @@ class AdvancedGPUProbingCache(ProbingCache):
             cuda.synchronize()
 
             if int(d_infeasible.copy_to_host()[0]) != 0:
-                return (
-                    False,
-                    np.empty(0, dtype=np.int64),
-                    np.empty(0, dtype=np.float64),
-                    np.empty(0, dtype=np.float64),
+                return CompactedPropagationResult(
+                    is_feasible=False,
+                    changed_indices=np.empty(0, dtype=np.int64),
+                    changed_lb=np.empty(0, dtype=np.float64),
+                    changed_ub=np.empty(0, dtype=np.float64),
+                    result_copied_bytes=0,
                 )
 
             changed = int(d_changed.copy_to_host()[0]) != 0
@@ -251,11 +254,12 @@ class AdvancedGPUProbingCache(ProbingCache):
             if not changed:
                 num_changed = int(d_changed_count.copy_to_host()[0])
                 if num_changed == 0:
-                    return (
-                        True,
-                        np.empty(0, dtype=np.int64),
-                        np.empty(0, dtype=np.float64),
-                        np.empty(0, dtype=np.float64),
+                    return CompactedPropagationResult(
+                        is_feasible=True,
+                        changed_indices=np.empty(0, dtype=np.int64),
+                        changed_lb=np.empty(0, dtype=np.float64),
+                        changed_ub=np.empty(0, dtype=np.float64),
+                        result_copied_bytes=0,
                     )
 
                 d_compact_indices = cuda.device_array(num_changed, dtype=np.int64)  # type: ignore
@@ -273,39 +277,55 @@ class AdvancedGPUProbingCache(ProbingCache):
                 )
                 cuda.synchronize()
 
-                return (
-                    True,
-                    d_compact_indices.copy_to_host(),
-                    d_compact_lb.copy_to_host(),
-                    d_compact_ub.copy_to_host(),
+                compact_indices_host = d_compact_indices.copy_to_host()
+                compact_lb_host = d_compact_lb.copy_to_host()
+                compact_ub_host = d_compact_ub.copy_to_host()
+
+                return CompactedPropagationResult(
+                    is_feasible=True,
+                    changed_indices=compact_indices_host,
+                    changed_lb=compact_lb_host,
+                    changed_ub=compact_ub_host,
+                    result_copied_bytes=compact_indices_host.nbytes
+                    + compact_lb_host.nbytes
+                    + compact_ub_host.nbytes,
                 )  # type: ignore
 
         raise RuntimeError(
             f"Advanced GPU propagation did not converge after {max_iterations} iterations."
         )
 
-    def probe(self, var_index: VarIndex) -> ProbeMetrics:
-        start = time.perf_counter()
-
+    def probe(self, var_index: VarIndex) -> list[ProbeMetrics]:
         default_interval = BoundInterval(
             self.problem.original_lb[var_index], self.problem.original_ub[var_index]
         )
+        metrics: list[ProbeMetrics] = []
         for probe_interval in self.split_interval(default_interval):
+            start = time.perf_counter()
             # advanced approach: only return the bounds that have changed/improved
-            (
-                is_feasible,
-                changed_indices,
-                changed_lb,
-                changed_ub,
-            ) = self.propagate_until_fixpoint((var_index, probe_interval))
+            compact_propagation_result = self.propagate_until_fixpoint(
+                (var_index, probe_interval)
+            )
             advanced_cache_entry = self.build_cache_entry_from_compacted_bounds(
-                is_feasible, changed_indices, changed_lb, changed_ub
+                compact_propagation_result.is_feasible,
+                compact_propagation_result.changed_indices,
+                compact_propagation_result.changed_lb,
+                compact_propagation_result.changed_ub,
             )
             self.probe_results[(var_index, probe_interval)] = advanced_cache_entry
-        return ProbeMetrics(
-            instance_name=self.problem.name,
-            num_vars=self.problem.num_variables,
-            duration_ms=(time.perf_counter() - start) * 1000,
-            num_changed_bounds=len(changed_indices),
-            full_copy=False,
-        )
+            metrics.append(
+                ProbeMetrics(
+                    instance_name=self.problem.name,
+                    num_vars=self.problem.num_variables,
+                    num_integer_vars=self.problem.num_integer_vars,
+                    var_index=var_index,
+                    probe_lower_bound=probe_interval.lower_bound,
+                    probe_upper_bound=probe_interval.upper_bound,
+                    is_feasible=compact_propagation_result.is_feasible,
+                    implementation="advanced",
+                    duration_ms=(time.perf_counter() - start) * 1000,
+                    num_changed_bounds=len(compact_propagation_result.changed_indices),
+                    result_copied_bytes=compact_propagation_result.result_copied_bytes,
+                )
+            )
+        return metrics
