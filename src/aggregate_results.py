@@ -19,7 +19,6 @@ class ProbeKey:
     var_index: int
     probe_lower_bound: float
     probe_upper_bound: float
-    implementation: ImplementationType
 
 
 def match_probes(
@@ -34,7 +33,6 @@ def match_probes(
             var_index=probe.var_index,
             probe_lower_bound=probe.probe_lower_bound,
             probe_upper_bound=probe.probe_upper_bound,
-            implementation=probe.implementation,
         )
         if key not in probe_dict:
             probe_dict[key] = (None, None)
@@ -44,13 +42,13 @@ def match_probes(
             probe_dict[key] = (probe_dict[key][0], probe)
     # Filter out keys where we don't have both implementations
     matched_probes: dict[ProbeKey, tuple[ProbeMetrics, ProbeMetrics]] = {}
+    missing = 0
     for key, (naiv_probe, advanced_probe) in probe_dict.items():
         if naiv_probe is not None and advanced_probe is not None:
             matched_probes[key] = (naiv_probe, advanced_probe)
         else:
-            raise ValueError(
-                f"Missing probe for key {key}: naiv={naiv_probe}, advanced={advanced_probe}"
-            )
+            missing += 1
+    print(f"missing {missing} probe-metrics")
     return matched_probes
 
 
@@ -147,14 +145,100 @@ def scatter_and_regression(naiv_x, naiv_y, advanced_x, advanced_y, x_label) -> N
     plt.savefig(f"output/graphics/{x_label.replace(' ', '_')}_plot.png")  # type: ignore
     plt.close()
 
+def plot_copied_ratio_x_speedup(matched_probes: dict[ProbeKey, tuple[ProbeMetrics, ProbeMetrics]]) -> None:
+    copy_ratio = np.array([naiv_probe.result_copied_bytes / advanced_probe.result_copied_bytes for (naiv_probe, advanced_probe) in matched_probes.values() if naiv_probe.result_copied_bytes > 0 and advanced_probe.result_copied_bytes > 0])
+    speedups = np.array([naiv_probe.duration_ms / advanced_probe.duration_ms for (naiv_probe, advanced_probe) in matched_probes.values() if naiv_probe.result_copied_bytes > 0 and advanced_probe.result_copied_bytes > 0])
+
+    plt.figure(figsize=(10, 6))
+    plt.scatter(copy_ratio, speedups, alpha=0.4, s=12)
+    # reference line: no speedup
+    plt.axhline(1.0, linestyle="--", linewidth=1)
+    plt.xlabel("Copied bytes ratio (naiv / advanced)")
+    plt.xscale("log")
+    plt.yscale("log")
+    plt.ylabel("Speedup: naive runtime / advanced runtime")
+    plt.title("Copied Bytes ratio x Speedup")
+    plt.savefig(
+        "output/graphics/copied_bytes_ratio_x_speedup.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close()
+
+def plot_copied_bytes_x_speedup(matched_probes: dict[ProbeKey, tuple[ProbeMetrics, ProbeMetrics]]) -> None:
+    x = np.array([advanced_probe.result_copied_bytes for (naiv_probe, advanced_probe) in matched_probes.values()])
+    speedups = np.array([naiv_probe.duration_ms / advanced_probe.duration_ms for (naiv_probe, advanced_probe) in matched_probes.values()])
+
+    print(f"median speedup = {np.median(speedups)}")
+    print(f"mean speedup = {np.mean(speedups)}")
+    print(f"speedup > 1 in {np.sum(speedups > 1)} cases")
+    print(f"speedup < 1 in {np.sum(speedups < 1)} cases")
+
+    plt.figure(figsize=(10, 6))
+    plt.scatter(x, speedups, alpha=0.4, s=12)
+    # reference line: no speedup
+    plt.axhline(1.0, linestyle="--", linewidth=1)
+    plt.xlabel("Advanced copied bytes")
+    plt.xscale("log")
+    plt.yscale("log")
+    plt.ylabel("Speedup: naive runtime / advanced runtime")
+    plt.title("Advanced GPU speedup vs copied bytes")
+    plt.savefig(
+        "output/graphics/advanced_speedup_vs_copied_bytes.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close()
+
+def get_instance_probes(probes: list[ProbeMetrics]) -> dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]]:
+    instance_probes: dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]] = {}
+    for probe in probes:
+        if probe.instance_name not in instance_probes:
+            instance_probes[probe.instance_name] = ([], [])
+        if probe.implementation == "naiv":
+            instance_probes[probe.instance_name][0].append(probe)
+        else:
+            instance_probes[probe.instance_name][1].append(probe)
+    return instance_probes
+
+def plot_num_vars_x_avg_speedup(instance_probes: dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]]) -> None:
+    num_vars = np.array([naiv_probes[0].num_vars for (naiv_probes, advanced_probes) in instance_probes.values()])
+    total_naiv_times = np.array([
+        np.sum([probe.duration_ms for probe in naiv_probes])
+        for (naiv_probes, advanced_probes) in instance_probes.values()
+    ])
+    total_advanced_times = np.array([
+        np.sum([probe.duration_ms for probe in advanced_probes])
+        for (naiv_probes, advanced_probes) in instance_probes.values()
+    ])
+    total_speedup = total_naiv_times / total_advanced_times
+
+    plt.figure(figsize=(10, 6))
+    plt.scatter(num_vars, total_speedup, alpha=0.4, s=12)
+    # reference line: no speedup
+    plt.axhline(1.0, linestyle="--", linewidth=1)
+    plt.xlabel("Num Vars")
+    plt.xscale("log")
+    plt.ylabel("Speedup: naive runtime / advanced runtime")
+    plt.title("Advanced GPU speedup vs num vars")
+    plt.savefig(
+        "output/graphics/advanced_speedup_vs_num_vars.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close()
+
 
 def main():
     all_probes: list[ProbeMetrics] = parse_results()
 
     matched_probes = match_probes(all_probes)
 
-    print(matched_probes)
-    return
+    instance_probes = get_instance_probes(all_probes)
+    plot_num_vars_x_avg_speedup(instance_probes)
+
+    plot_copied_bytes_x_speedup(matched_probes)
+    plot_copied_ratio_x_speedup(matched_probes)
 
     instance_metrics: dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]] = (
         aggregate_probes(all_probes)
