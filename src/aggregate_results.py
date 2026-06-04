@@ -1,4 +1,5 @@
-from typing import cast
+from dataclasses import dataclass
+from typing import Optional, cast
 
 from seaborn.objects import Path
 
@@ -10,6 +11,47 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 from type_aliases import ImplementationType
+
+
+@dataclass(frozen=True)
+class ProbeKey:
+    instance_name: str
+    var_index: int
+    probe_lower_bound: float
+    probe_upper_bound: float
+    implementation: ImplementationType
+
+
+def match_probes(
+    probes: list[ProbeMetrics],
+) -> dict[ProbeKey, tuple[ProbeMetrics, ProbeMetrics]]:
+    probe_dict: dict[
+        ProbeKey, tuple[Optional[ProbeMetrics], Optional[ProbeMetrics]]
+    ] = {}
+    for probe in probes:
+        key = ProbeKey(
+            instance_name=probe.instance_name,
+            var_index=probe.var_index,
+            probe_lower_bound=probe.probe_lower_bound,
+            probe_upper_bound=probe.probe_upper_bound,
+            implementation=probe.implementation,
+        )
+        if key not in probe_dict:
+            probe_dict[key] = (None, None)
+        if probe.implementation == "naiv":
+            probe_dict[key] = (probe, probe_dict[key][1])
+        else:
+            probe_dict[key] = (probe_dict[key][0], probe)
+    # Filter out keys where we don't have both implementations
+    matched_probes: dict[ProbeKey, tuple[ProbeMetrics, ProbeMetrics]] = {}
+    for key, (naiv_probe, advanced_probe) in probe_dict.items():
+        if naiv_probe is not None and advanced_probe is not None:
+            matched_probes[key] = (naiv_probe, advanced_probe)
+        else:
+            raise ValueError(
+                f"Missing probe for key {key}: naiv={naiv_probe}, advanced={advanced_probe}"
+            )
+    return matched_probes
 
 
 def parse_file(content: str) -> list[ProbeMetrics]:
@@ -108,6 +150,12 @@ def scatter_and_regression(naiv_x, naiv_y, advanced_x, advanced_y, x_label) -> N
 
 def main():
     all_probes: list[ProbeMetrics] = parse_results()
+
+    matched_probes = match_probes(all_probes)
+
+    print(matched_probes)
+    return
+
     instance_metrics: dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]] = (
         aggregate_probes(all_probes)
     )  # instance : ([naiv_probes], [advanced_probes])
