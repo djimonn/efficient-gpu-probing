@@ -145,52 +145,85 @@ def scatter_and_regression(naiv_x, naiv_y, advanced_x, advanced_y, x_label) -> N
     plt.savefig(f"output/graphics/{x_label.replace(' ', '_')}_plot.png")  # type: ignore
     plt.close()
 
-def plot_copied_ratio_x_speedup(matched_probes: dict[ProbeKey, tuple[ProbeMetrics, ProbeMetrics]]) -> None:
-    copy_ratio = np.array([naiv_probe.result_copied_bytes / advanced_probe.result_copied_bytes for (naiv_probe, advanced_probe) in matched_probes.values() if naiv_probe.result_copied_bytes > 0 and advanced_probe.result_copied_bytes > 0])
-    speedups = np.array([naiv_probe.duration_ms / advanced_probe.duration_ms for (naiv_probe, advanced_probe) in matched_probes.values() if naiv_probe.result_copied_bytes > 0 and advanced_probe.result_copied_bytes > 0])
 
-    plt.figure(figsize=(10, 6))
-    plt.scatter(copy_ratio, speedups, alpha=0.4, s=12)
+def plot_copied_ratio_x_speedup(
+    matched_probes: dict[ProbeKey, tuple[ProbeMetrics, ProbeMetrics]],
+) -> None:
+    copy_ratio = np.array(
+        [
+            naiv_probe.result_copied_bytes / advanced_probe.result_copied_bytes
+            for (naiv_probe, advanced_probe) in matched_probes.values()
+            if naiv_probe.result_copied_bytes > 0
+            and advanced_probe.result_copied_bytes > 0
+        ]
+    )
+    speedups = np.array(
+        [
+            naiv_probe.duration_ms / advanced_probe.duration_ms
+            for (naiv_probe, advanced_probe) in matched_probes.values()
+            if naiv_probe.result_copied_bytes > 0
+            and advanced_probe.result_copied_bytes > 0
+        ]
+    )
+
+    plt.figure(figsize=(10, 6))  # type: ignore
+    plt.scatter(copy_ratio, speedups, alpha=0.4, s=12)  # type: ignore
     # reference line: no speedup
-    plt.axhline(1.0, linestyle="--", linewidth=1)
-    plt.xlabel("Copied bytes ratio (naiv / advanced)")
-    plt.xscale("log")
-    plt.yscale("log")
-    plt.ylabel("Speedup: naive runtime / advanced runtime")
-    plt.title("Copied Bytes ratio x Speedup")
-    plt.savefig(
+    plt.axhline(1.0, linestyle="--", linewidth=1)  # type: ignore
+    plt.xlabel("Copied bytes ratio (naiv / advanced)")  # type: ignore
+    plt.xscale("log")  # type: ignore
+    plt.yscale("log")  # type: ignore
+    plt.ylabel("Speedup: naive runtime / advanced runtime")  # type: ignore
+    plt.title("Copied Bytes ratio x Speedup")  # type: ignore
+    plt.savefig(  # type: ignore
         "output/graphics/copied_bytes_ratio_x_speedup.png",
         dpi=300,
         bbox_inches="tight",
     )
     plt.close()
 
-def plot_copied_bytes_x_speedup(matched_probes: dict[ProbeKey, tuple[ProbeMetrics, ProbeMetrics]]) -> None:
-    x = np.array([advanced_probe.result_copied_bytes for (naiv_probe, advanced_probe) in matched_probes.values()])
-    speedups = np.array([naiv_probe.duration_ms / advanced_probe.duration_ms for (naiv_probe, advanced_probe) in matched_probes.values()])
+
+def plot_copied_bytes_x_speedup(
+    matched_probes: dict[ProbeKey, tuple[ProbeMetrics, ProbeMetrics]],
+) -> None:
+    x = np.array(
+        [
+            advanced_probe.result_copied_bytes
+            for (_naiv_probe, advanced_probe) in matched_probes.values()
+        ]
+    )
+    speedups = np.array(
+        [
+            naiv_probe.duration_ms / advanced_probe.duration_ms
+            for (naiv_probe, advanced_probe) in matched_probes.values()
+        ]
+    )
 
     print(f"median speedup = {np.median(speedups)}")
     print(f"mean speedup = {np.mean(speedups)}")
     print(f"speedup > 1 in {np.sum(speedups > 1)} cases")
     print(f"speedup < 1 in {np.sum(speedups < 1)} cases")
 
-    plt.figure(figsize=(10, 6))
-    plt.scatter(x, speedups, alpha=0.4, s=12)
+    plt.figure(figsize=(10, 6))  # type: ignore
+    plt.scatter(x, speedups, alpha=0.4, s=12)  # type: ignore
     # reference line: no speedup
-    plt.axhline(1.0, linestyle="--", linewidth=1)
-    plt.xlabel("Advanced copied bytes")
-    plt.xscale("log")
-    plt.yscale("log")
-    plt.ylabel("Speedup: naive runtime / advanced runtime")
-    plt.title("Advanced GPU speedup vs copied bytes")
-    plt.savefig(
+    plt.axhline(1.0, linestyle="--", linewidth=1)  # type: ignore
+    plt.xlabel("Advanced copied bytes")  # type: ignore
+    plt.xscale("log")  # type: ignore
+    plt.yscale("log")  # type: ignore
+    plt.ylabel("Speedup: naive runtime / advanced runtime")  # type: ignore
+    plt.title("Advanced GPU speedup vs copied bytes")  # type: ignore
+    plt.savefig(  # type: ignore
         "output/graphics/advanced_speedup_vs_copied_bytes.png",
         dpi=300,
         bbox_inches="tight",
     )
     plt.close()
 
-def get_instance_probes(probes: list[ProbeMetrics]) -> dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]]:
+
+def get_instance_probes(
+    probes: list[ProbeMetrics],
+) -> dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]]:
     instance_probes: dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]] = {}
     for probe in probes:
         if probe.instance_name not in instance_probes:
@@ -201,27 +234,39 @@ def get_instance_probes(probes: list[ProbeMetrics]) -> dict[str, tuple[list[Prob
             instance_probes[probe.instance_name][1].append(probe)
     return instance_probes
 
-def plot_num_vars_x_avg_speedup(instance_probes: dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]]) -> None:
-    num_vars = np.array([naiv_probes[0].num_vars for (naiv_probes, advanced_probes) in instance_probes.values()])
-    total_naiv_times = np.array([
-        np.sum([probe.duration_ms for probe in naiv_probes])
-        for (naiv_probes, advanced_probes) in instance_probes.values()
-    ])
-    total_advanced_times = np.array([
-        np.sum([probe.duration_ms for probe in advanced_probes])
-        for (naiv_probes, advanced_probes) in instance_probes.values()
-    ])
+
+def plot_num_vars_x_avg_speedup(
+    instance_probes: dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]],
+) -> None:
+    num_vars = np.array(
+        [
+            naiv_probes[0].num_vars
+            for (naiv_probes, _advanced_probes) in instance_probes.values()
+        ]
+    )
+    total_naiv_times = np.array(
+        [
+            np.sum([probe.duration_ms for probe in naiv_probes])
+            for (naiv_probes, _advanced_probes) in instance_probes.values()
+        ]
+    )
+    total_advanced_times = np.array(
+        [
+            np.sum([probe.duration_ms for probe in advanced_probes])
+            for (_naiv_probes, advanced_probes) in instance_probes.values()
+        ]
+    )
     total_speedup = total_naiv_times / total_advanced_times
 
-    plt.figure(figsize=(10, 6))
-    plt.scatter(num_vars, total_speedup, alpha=0.4, s=12)
+    plt.figure(figsize=(10, 6))  # type: ignore
+    plt.scatter(num_vars, total_speedup, alpha=0.4, s=12)  # type: ignore
     # reference line: no speedup
-    plt.axhline(1.0, linestyle="--", linewidth=1)
-    plt.xlabel("Num Vars")
-    plt.xscale("log")
-    plt.ylabel("Speedup: naive runtime / advanced runtime")
-    plt.title("Advanced GPU speedup vs num vars")
-    plt.savefig(
+    plt.axhline(1.0, linestyle="--", linewidth=1)  # type: ignore
+    plt.xlabel("Num Vars")  # type: ignore
+    plt.xscale("log")  # type: ignore
+    plt.ylabel("Speedup: naive runtime / advanced runtime")  # type: ignore
+    plt.title("Advanced GPU speedup vs num vars")  # type: ignore
+    plt.savefig(  # type: ignore
         "output/graphics/advanced_speedup_vs_num_vars.png",
         dpi=300,
         bbox_inches="tight",
