@@ -273,13 +273,78 @@ def plot_num_vars_x_avg_speedup(
     )
     plt.close()
 
+def get_performance_ratios(instance_probes: dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]]) -> dict[str, tuple[float, float]]:
+    total_times: dict[str, tuple[float, float]] = {}
+    for instance_name, (naiv_probes, advanced_probes) in instance_probes.items():
+        if instance_name not in total_times:
+            total_times[instance_name] = (sum([probe.duration_ms for probe in naiv_probes]), sum([probe.duration_ms for probe in advanced_probes]))
+        else:
+            raise ValueError("Already set instance times")
+    performance_ratios: dict[str, tuple[float, float]] = {}
+    for instance_name, (total_naiv, total_advanced) in total_times.items():
+        if instance_name not in performance_ratios:
+            pass
+            performance_ratios[instance_name] = (total_naiv / min(total_naiv, total_advanced), total_advanced / min(total_naiv, total_advanced))
+        else:
+            raise ValueError("Already set instance performance ratios")
+    return performance_ratios
+
+
+def get_cum_dist_function_values(performance_ratios: dict[str, tuple[float, float]]) -> dict[float, tuple[float, float]]:
+    n_p = len(performance_ratios)
+    res: dict[float, tuple[float, float]] = {}
+    for tau in np.arange(1, 4, 0.05):
+        naiv_val = (1/n_p) * sum([1 for (naiv, _) in performance_ratios.values() if naiv <= tau])
+        adv_val = (1/n_p) * sum([1 for (_, adv) in performance_ratios.values() if adv <= tau])
+        res[tau] = (naiv_val, adv_val)
+    return res
+
+def plot_cum_dist_function(cum_dist_function_values: dict[float, tuple[float, float]]) -> None:
+    x = sorted(cum_dist_function_values.keys())
+    y_naive = [cum_dist_function_values[xi][0] for xi in x]
+    y_advanced = [cum_dist_function_values[xi][1] for xi in x]
+    plt.figure(figsize=(8, 5))
+    plt.step(x, y_naive, where="post", label="Naive")
+    plt.step(x, y_advanced, where="post", label="Advanced")
+    plt.xlabel(r"$\tau$")
+    plt.xlim(left=1)
+    plt.ylabel(r"$\rho_s(\tau)$")
+    plt.legend(loc="lower right")
+    plt.grid(True)
+    plt.xticks([1, 2, 3, 4])
+    plt.savefig("performance_profile.png", dpi=300, bbox_inches="tight")
+    plt.close()
+
+def stuff(instance_probes: dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]]) -> None:
+    total_times: dict[str, tuple[float, float]] = {}
+    for instance_name, (naiv_probes, advanced_probes) in instance_probes.items():
+        total_times[instance_name] = (sum([probe.duration_ms for probe in naiv_probes]), sum([probe.duration_ms for probe in advanced_probes]))
+    adv_speedups: dict[str, float] = {}
+    naiv_speedups: dict[str, float] = {}
+    for instance_name, (total_naiv, total_adv) in total_times.items():
+        adv_speedups[instance_name] = total_naiv / total_adv
+        naiv_speedups[instance_name] = total_adv / total_naiv
+    best_adv = max(adv_speedups, key=adv_speedups.get)
+    best_naiv = max(naiv_speedups, key=naiv_speedups.get)
+    print(f"best adv instance is {best_adv} with speedup of {adv_speedups[best_adv]}")
+    print(f"best naiv instance is {best_naiv} with speedup of {naiv_speedups[best_naiv]}")
+    
+
 
 def main():
     all_probes: list[ProbeMetrics] = parse_results()
 
     matched_probes = match_probes(all_probes)
 
-    instance_probes = get_instance_probes(all_probes)
+    instance_probes: dict[str, tuple[list[ProbeMetrics], list[ProbeMetrics]]] = get_instance_probes(all_probes)
+    stuff(instance_probes)
+    return
+    performance_ratios: dict[str, tuple[float, float]] = get_performance_ratios(instance_probes)
+    cumulative_distribution_function_values = get_cum_dist_function_values(performance_ratios)
+    plot_cum_dist_function(cumulative_distribution_function_values)
+
+
+    return
     plot_num_vars_x_avg_speedup(instance_probes)
 
     plot_copied_bytes_x_speedup(matched_probes)
