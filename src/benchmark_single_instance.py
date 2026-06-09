@@ -14,17 +14,19 @@ from probing_cache.probing_cache import ProbingCache
 def main() -> None:
     if len(sys.argv) != 2:
         raise ValueError("Arguments missing")
-    path = Path("data/MIPLIB2017_benchmark_set/50v-10.mps.gz")
-    problem = MILPProblem.from_mps_file(name="50v-10", path=str(path))
+    best_adv_path = Path("data/MIPLIB2017_benchmark_set/neos-873061.mps.gz")
+    best_naiv_path = Path("data/MIPLIB2017_benchmark_set/neos-4387871-tavua.mps.gz")
+    if sys.argv[1] not in ["n", "a"]:
+        raise ValueError("Unknown argument passed")
+    problem = MILPProblem.from_mps_file(name="biggest speedup", path=str(best_adv_path if sys.argv[1] == "a" else best_naiv_path))
     probing_cache: Optional[ProbingCache] = None
     if sys.argv[1] == "n":
         probing_cache = NaivGPUProbingCache(problem=problem)
     elif sys.argv[1] == "a":
         probing_cache = AdvancedGPUProbingCache(problem=problem)
-    else:
-        raise ValueError("Unknown argument passed")
-    first_int_index = int(np.flatnonzero(problem.is_integer)[0])
-    probing_cache.probe(var_index=first_int_index)
+    for var_index in range(problem.num_variables):
+        if problem.is_integer[var_index]:
+            probing_cache.probe(var_index=var_index)
 
 
 if __name__ == "__main__":
